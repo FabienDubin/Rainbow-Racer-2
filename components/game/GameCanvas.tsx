@@ -65,10 +65,7 @@ export default function GameCanvas() {
   }, [dimensions])
 
   return (
-    <div
-      ref={containerRef}
-      className="relative w-full h-screen overflow-hidden bg-[#1a1a2e]"
-    >
+    <div ref={containerRef} className="relative w-full h-screen overflow-hidden bg-[#1a1a2e]">
       <canvas
         ref={canvasRef}
         width={dimensions.width}
