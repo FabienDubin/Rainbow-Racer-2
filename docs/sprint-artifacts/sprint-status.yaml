@@ -1,0 +1,93 @@
+# generated: 2025-11-24
+# project: RainbowRacer2
+# project_key: RainbowRacer2
+# tracking_system: file-system
+# story_location: {project-root}/docs/sprint-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic exists in epic file but not contexted
+#   - contexted: Epic tech context created (required before drafting stories)
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - drafted: Story file created in stories folder
+#   - ready-for-dev: Draft approved and story context created
+#   - in-progress: Developer actively working on implementation
+#   - review: Under SM review (via code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - completed: Retrospective has been done
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epics should be 'contexted' before stories can be 'drafted'
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically drafts next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', SM reviews, then Dev moves to 'done'
+
+generated: 2025-11-24
+project: RainbowRacer2
+project_key: RainbowRacer2
+tracking_system: file-system
+story_location: "{project-root}/docs/sprint-artifacts"
+
+development_status:
+  # Epic 1: Foundation & Core Movement
+  epic-1: contexted
+  1-1-setup-nextjs-supabase-canvas-boilerplate: done
+  1-2-player-entity-avec-mouvement-wasd-et-gravite: drafted
+  1-3-systeme-de-saut-avec-hauteur-variable: backlog
+  1-4-flap-wings-system-double-jump-avec-animation: backlog
+  1-5-systeme-de-plane-glide-apres-flap: backlog
+  1-6-dash-mechanic-avec-i-frames-et-cooldown: backlog
+  1-7-premier-biome-avec-parallax-multi-couches: backlog
+  1-8-optimisation-performance-pour-60-fps: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Complete Gameplay Loop
+  epic-2: backlog
+  2-1-systeme-de-collectibles-gems-stars-rainbow-fragments: backlog
+  2-2-generation-procedurale-pattern-based: backlog
+  2-3-difficulty-scaling-dynamique: backlog
+  2-4-systeme-de-mort-et-respawn: backlog
+  2-5-hud-temps-reel: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Meta-Progression System
+  epic-3: backlog
+  3-1-localstorage-persistence-des-gems: backlog
+  3-2-upgrade-shop-ui: backlog
+  3-3-implementation-des-upgrades-de-mouvement: backlog
+  3-4-implementation-des-upgrades-de-survie-et-economie: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Polish, Power-Ups & Game Feel
+  epic-4: backlog
+  4-1-power-ups-temporaires-speed-invincibility-magnet-ghost: backlog
+  4-2-cacalicorne-bomb-ultimate: backlog
+  4-3-systeme-de-particules-avance-et-screenshake: backlog
+  4-4-audio-integration-complete: backlog
+  4-5-menu-principal-et-pause: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Online & Social Features
+  epic-5: backlog
+  5-1-supabase-auth-setup-google-github-oauth: backlog
+  5-2-leaderboard-global-top-100: backlog
+  5-3-score-submission-automatique: backlog
+  5-4-ghost-racing-recording-stretch: backlog
+  5-5-partage-de-run-via-url: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Production Deployment
+  epic-6: backlog
+  6-1-vercel-deployment-configuration: backlog
+  6-2-custom-domain-et-ssl: backlog
+  6-3-production-optimizations: backlog
+  6-4-error-tracking-et-monitoring: backlog
+  6-5-readme-et-documentation: backlog
+  epic-6-retrospective: optional

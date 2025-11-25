@@ -1,0 +1,54 @@
+# Workflow Status Template
+
+# This tracks progress through BMM methodology Analysis, Planning, and Solutioning phases.
+# Implementation phase is tracked separately in sprint-status.yaml
+
+# STATUS DEFINITIONS:
+# ==================
+# Initial Status (before completion):
+#   - required: Must be completed to progress
+#   - optional: Can be completed but not required
+#   - recommended: Strongly suggested but not required
+#   - conditional: Required only if certain conditions met (e.g., if_has_ui)
+#
+# Completion Status:
+#   - {file-path}: File created/found (e.g., "docs/product-brief.md")
+#   - skipped: Optional/conditional workflow that was skipped
+
+generated: "2025-11-24"
+project: "RainbowRacer2"
+project_type: "game"
+selected_track: "bmad-method"
+field_type: "greenfield"
+workflow_path: ".bmad/bmm/workflows/workflow-status/paths/method-greenfield.yaml"
+
+workflow_status:
+  # Phase 0: Discovery (Optional)
+  phase_0_discovery:
+    brainstorm-project: "skipped"
+    research: "skipped"
+    product-brief: "docs/game-brief-Rainbow-Racer-V2-2025-11-23.md"
+
+  # Phase 1: Planning (Required)
+  phase_1_planning:
+    prd: "docs/GDD.md"  # GDD serves as PRD for game projects
+    validate-prd: "skipped"
+    create-design: "skipped"  # Canvas game, no traditional UI design needed
+
+  # Phase 2: Solutioning (Required)
+  phase_2_solutioning:
+    create-architecture: "docs/game-architecture.md"
+    create-epics-and-stories: "docs/epics.md"
+    test-design: "skipped"
+    validate-architecture: "skipped"
+    implementation-readiness: "docs/implementation-readiness-report-2025-11-24.md"
+
+  # Phase 3: Implementation (Required)
+  phase_3_implementation:
+    sprint-planning: "required"
+
+notes:
+  - "Project uses Game Development approach (GDD instead of traditional PRD)"
+  - "Architecture includes Next.js 16, Canvas 2D, Supabase backend"
+  - "6 epics with 35 stories total, estimated 40-50h (MVP target 20h)"
+  - "Next workflow: implementation-readiness to validate all artifacts before coding"
