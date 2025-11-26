@@ -1,0 +1,178 @@
+import { Player } from '../entities/Player'
+import { Entity } from '../entities/Entity'
+import { InputManager } from './InputManager'
+import { GameLoop } from './GameLoop'
+import { PhysicsSystem } from '../systems/PhysicsSystem'
+import { CollisionSystem } from '../systems/CollisionSystem'
+import { RenderSystem } from '../systems/RenderSystem'
+
+/**
+ * GameState - Current state of the game
+ */
+export enum GameState {
+  MENU = 'MENU',
+  PLAYING = 'PLAYING',
+  PAUSED = 'PAUSED',
+}
+
+/**
+ * GameEngine - Main orchestrator for the game
+ *
+ * Manages all game systems and coordinates the game loop:
+ * 1. Process input
+ * 2. Update physics
+ * 3. Check collisions
+ * 4. Render frame
+ */
+export class GameEngine {
+  // Canvas reference
+  private canvas: HTMLCanvasElement
+  private ctx: CanvasRenderingContext2D
+
+  // Game state
+  private state: GameState
+
+  // Core systems
+  private inputManager: InputManager
+  private gameLoop: GameLoop
+  private physicsSystem: PhysicsSystem
+  private collisionSystem: CollisionSystem
+  private renderSystem: RenderSystem
+
+  // Entities
+  private player: Player
+  private entities: Entity[]
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      throw new Error('Failed to get 2D context from canvas')
+    }
+    this.ctx = ctx
+
+    // Initialize state
+    this.state = GameState.MENU
+
+    // Initialize systems
+    this.inputManager = new InputManager()
+    this.physicsSystem = new PhysicsSystem()
+    this.collisionSystem = new CollisionSystem(canvas.width, canvas.height)
+    this.renderSystem = new RenderSystem(ctx, canvas.width, canvas.height)
+
+    // Initialize player at center-bottom of screen
+    const startX = canvas.width / 2 - 32 // Center horizontally (32 = half of 64)
+    const startY = canvas.height - 64 - 100 // Above ground with some margin
+    this.player = new Player(startX, startY)
+
+    // Entities array for systems to operate on
+    this.entities = [this.player]
+
+    // Initialize game loop with callbacks
+    this.gameLoop = new GameLoop(
+      this.update.bind(this),
+      this.render.bind(this)
+    )
+  }
+
+  /**
+   * Start the game
+   */
+  start(): void {
+    this.state = GameState.PLAYING
+    this.gameLoop.start()
+  }
+
+  /**
+   * Pause the game
+   */
+  pause(): void {
+    if (this.state === GameState.PLAYING) {
+      this.state = GameState.PAUSED
+      this.gameLoop.stop()
+    }
+  }
+
+  /**
+   * Resume from pause
+   */
+  resume(): void {
+    if (this.state === GameState.PAUSED) {
+      this.state = GameState.PLAYING
+      this.gameLoop.start()
+    }
+  }
+
+  /**
+   * Clean up all resources
+   */
+  destroy(): void {
+    this.gameLoop.stop()
+    this.inputManager.destroy()
+    this.state = GameState.MENU
+  }
+
+  /**
+   * Handle canvas resize
+   */
+  resize(width: number, height: number): void {
+    this.collisionSystem.setCanvasSize(width, height)
+    this.renderSystem.setCanvasSize(width, height)
+  }
+
+  /**
+   * Get current game state
+   */
+  getState(): GameState {
+    return this.state
+  }
+
+  /**
+   * Main update function - called each frame
+   * Order: input → player update → physics → collision → entity update
+   */
+  private update(deltaTime: number): void {
+    if (this.state !== GameState.PLAYING) return
+
+    // 1. Update input state
+    this.inputManager.update()
+
+    // 2. Process player input
+    this.processPlayerInput()
+
+    // 3. Update physics (gravity + velocity integration)
+    this.physicsSystem.update(deltaTime, this.entities)
+
+    // 4. Check and resolve collisions
+    this.collisionSystem.update(this.player)
+
+    // 5. Update all entities (state changes, animations, etc.)
+    for (const entity of this.entities) {
+      entity.update(deltaTime)
+    }
+  }
+
+  /**
+   * Process player movement input
+   */
+  private processPlayerInput(): void {
+    const left = this.inputManager.isLeftPressed()
+    const right = this.inputManager.isRightPressed()
+
+    if (left && !right) {
+      this.player.handleMovement('left')
+    } else if (right && !left) {
+      this.player.handleMovement('right')
+    } else {
+      this.player.handleMovement('none')
+    }
+  }
+
+  /**
+   * Main render function - called each frame after update
+   */
+  private render(): void {
+    this.renderSystem.render(this.entities)
+  }
+}

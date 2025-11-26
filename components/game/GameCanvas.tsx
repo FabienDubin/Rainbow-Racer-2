@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
+import { GameEngine } from '@/game/core/GameEngine'
 
 /**
  * GameCanvas component - Main canvas wrapper for the game engine
@@ -10,16 +11,21 @@ import { useRef, useEffect, useState } from 'react'
 export default function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const gameEngineRef = useRef<GameEngine | null>(null)
   const [dimensions, setDimensions] = useState({ width: 1920, height: 1080 })
 
   // Handle canvas resize to fill the viewport
   useEffect(() => {
     const updateDimensions = () => {
       if (containerRef.current) {
-        setDimensions({
-          width: window.innerWidth,
-          height: window.innerHeight,
-        })
+        const newWidth = window.innerWidth
+        const newHeight = window.innerHeight
+        setDimensions({ width: newWidth, height: newHeight })
+
+        // Notify GameEngine of resize
+        if (gameEngineRef.current) {
+          gameEngineRef.current.resize(newWidth, newHeight)
+        }
       }
     }
 
@@ -34,35 +40,26 @@ export default function GameCanvas() {
     }
   }, [])
 
-  // Initialize canvas context and basic rendering
+  // Initialize GameEngine
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const ctx = canvas.getContext('2d')
-    if (!ctx) {
-      console.error('Failed to get 2D context from canvas')
-      return
-    }
+    // Create and start GameEngine
+    const engine = new GameEngine(canvas)
+    gameEngineRef.current = engine
 
-    // Set canvas background color (Crystal Cloudscape biome - deep purple)
-    ctx.fillStyle = '#1a1a2e'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    // Sync with actual window dimensions immediately
+    engine.resize(window.innerWidth, window.innerHeight)
 
-    // Draw a placeholder text to confirm canvas is working
-    ctx.fillStyle = '#ffffff'
-    ctx.font = '24px Arial'
-    ctx.textAlign = 'center'
-    ctx.fillText('Rainbow Racer V2 - Canvas Ready', canvas.width / 2, canvas.height / 2)
-    ctx.font = '16px Arial'
-    ctx.fillStyle = '#888888'
-    ctx.fillText('Game Engine will be initialized here', canvas.width / 2, canvas.height / 2 + 30)
+    engine.start()
 
-    // Cleanup function - will be used later to destroy GameEngine
+    // Cleanup on unmount
     return () => {
-      // GameEngine cleanup will go here in future stories
+      engine.destroy()
+      gameEngineRef.current = null
     }
-  }, [dimensions])
+  }, []) // Only run once on mount
 
   return (
     <div ref={containerRef} className="relative w-full h-screen overflow-hidden bg-[#1a1a2e]">
