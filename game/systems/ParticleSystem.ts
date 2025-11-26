@@ -76,6 +76,61 @@ export class ParticleSystem {
   }
 
   /**
+   * Spawn feather particles for flap effect
+   * Radial dispersion with rainbow colors and longer lifetime
+   * @param x X position (center of player)
+   * @param y Y position (center of player)
+   * @param count Number of particles (8-12 typically)
+   */
+  spawnFeatherParticles(x: number, y: number, count: number): void {
+    const { FEATHER_LIFETIME, FEATHER_SIZE, FEATHER_SPEED_MIN, FEATHER_SPEED_MAX } = GAME_CONFIG.PARTICLES
+
+    // Rainbow colors for unicorn theme
+    const rainbowColors = [
+      '#ff6b6b', // Red
+      '#ffa502', // Orange
+      '#ffd93d', // Yellow
+      '#6bcb77', // Green
+      '#4d96ff', // Blue
+      '#6f42c1', // Indigo
+      '#cc65fe', // Violet
+      '#ff85a1', // Pink
+      '#00d4ff', // Cyan
+    ]
+
+    for (let i = 0; i < count; i++) {
+      const particle = this.pool.acquire()
+      if (!particle) break // Pool exhausted
+
+      // Radial dispersion: particles go in all directions
+      const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5
+      const speed = FEATHER_SPEED_MIN + Math.random() * (FEATHER_SPEED_MAX - FEATHER_SPEED_MIN)
+      const velocityX = Math.cos(angle) * speed
+      const velocityY = Math.sin(angle) * speed
+
+      // Random rainbow color
+      const color = rainbowColors[Math.floor(Math.random() * rainbowColors.length)]
+
+      // Random size within range (4-8 pixels)
+      const size = FEATHER_SIZE - 2 + Math.random() * 4
+
+      // Lifetime with slight variation (0.5-1s as per AC)
+      const lifetime = FEATHER_LIFETIME + (Math.random() - 0.5) * 0.4
+
+      particle.init(
+        x,
+        y,
+        velocityX,
+        velocityY,
+        color,
+        lifetime,
+        size,
+        0.2 // Light gravity so feathers float
+      )
+    }
+  }
+
+  /**
    * Spawn sparkle particles (for collectibles, power-ups)
    * @param x X position
    * @param y Y position

@@ -21,6 +21,8 @@ export const GAME_CONFIG = {
     JUMP_FORCE: -12,             // Initial jump velocity (negative = up)
     GRAVITY_MULTIPLIER_JUMPING: 0.5, // Reduced gravity when holding jump
     FLAP_FORCE: -15,             // Flap boost velocity (stronger than jump)
+    MAX_FLAPS: 1,                // Maximum flaps per jump (upgradable)
+    FLAP_ANIMATION_DURATION: 0.2, // Flap animation duration in seconds
     GLIDE_FALL_SPEED: -2,        // Max fall speed during glide
     GLIDE_GRAVITY_MULT: 0.3,     // Gravity multiplier when gliding
     GLIDE_HORIZONTAL_MULT: 1.3,  // Horizontal speed multiplier when gliding
@@ -37,6 +39,11 @@ export const GAME_CONFIG = {
     DUST_LIFETIME: 0.3,          // Dust particle lifetime in seconds
     DUST_SPEED_MIN: 20,          // Min dust particle velocity
     DUST_SPEED_MAX: 60,          // Max dust particle velocity
+    FEATHER_COUNT: 10,           // Number of feather particles on flap
+    FEATHER_LIFETIME: 0.75,      // Feather particle lifetime in seconds (0.5-1s)
+    FEATHER_SIZE: 6,             // Feather particle size in pixels (4-8px)
+    FEATHER_SPEED_MIN: 40,       // Min feather particle velocity
+    FEATHER_SPEED_MAX: 80,       // Max feather particle velocity
   },
 
   // Camera settings

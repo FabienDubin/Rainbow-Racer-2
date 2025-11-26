@@ -179,17 +179,16 @@ export class GameEngine {
       this.player.handleMovement('none')
     }
 
-    // Jump input - Space just pressed and player is grounded
+    // Jump/Flap input - Space just pressed
     if (this.inputManager.justPressed('Space')) {
+      // First, try to jump (only works if grounded)
       const didJump = this.player.handleJump()
 
-      // If jump was successful, play SFX and spawn dust particles
       if (didJump) {
-        // Play jump sound with slight pitch variation
+        // Jump was successful - play SFX and spawn dust particles
         AudioManager.playWithPitchVariation('jump', 0.1, 0.8)
 
         // Spawn dust particles at player's feet
-        // Pass player velocity so particles go opposite to movement direction
         const dustX = this.player.x + this.player.width / 2
         const dustY = this.player.y + this.player.height
         this.particleSystem.spawnDustParticles(
@@ -198,6 +197,23 @@ export class GameEngine {
           GAME_CONFIG.PARTICLES.DUST_COUNT,
           this.player.velocityX
         )
+      } else {
+        // Jump failed (not grounded), try to flap
+        const didFlap = this.player.handleFlap()
+
+        if (didFlap) {
+          // Flap was successful - play SFX and spawn feather particles
+          AudioManager.playWithPitchVariation('flap', 0.1, 0.9)
+
+          // Spawn feather particles at player center
+          const flapX = this.player.x + this.player.width / 2
+          const flapY = this.player.y + this.player.height / 2
+          this.particleSystem.spawnFeatherParticles(
+            flapX,
+            flapY,
+            GAME_CONFIG.PARTICLES.FEATHER_COUNT
+          )
+        }
       }
     }
   }
