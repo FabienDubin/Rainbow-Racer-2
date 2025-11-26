@@ -8,6 +8,7 @@ import { GAME_CONFIG } from '@/lib/constants'
  * Applies gravity to entities not on the ground and integrates
  * velocity to update positions each frame.
  * Uses deltaTime for framerate-independent physics.
+ * Supports variable jump height through gravity multiplier.
  */
 export class PhysicsSystem {
   // Gravity constant (pixels per frame squared, scaled by deltaTime)
@@ -21,8 +22,9 @@ export class PhysicsSystem {
    * Update physics for all entities
    * @param deltaTime Time elapsed since last frame in seconds
    * @param entities Array of entities to update
+   * @param isSpaceHeld Whether Space key is currently held (for variable jump height)
    */
-  update(deltaTime: number, entities: Entity[]): void {
+  update(deltaTime: number, entities: Entity[], isSpaceHeld: boolean = false): void {
     // Scale factor: convert frame-based values to time-based
     // At 60 FPS, deltaTime ≈ 0.0167s, so we multiply by 60 to get frame-equivalent
     const frameScale = deltaTime * GAME_CONFIG.TARGET_FPS
@@ -33,8 +35,24 @@ export class PhysicsSystem {
       // Apply gravity to non-grounded entities
       if (entity instanceof Player) {
         if (!entity.isGrounded()) {
-          // Gravity increases downward velocity each frame
-          entity.velocityY += this.gravity * frameScale
+          // Calculate gravity multiplier based on jump state and input
+          // Reduced gravity when:
+          // - Player is in 'jumping' state (ascending)
+          // - Space is held
+          // - velocityY < 0 (still going up)
+          let gravityMultiplier = 1.0
+
+          if (
+            entity.jumpState === 'jumping' &&
+            isSpaceHeld &&
+            entity.velocityY < 0
+          ) {
+            // Variable jump height: hold Space for higher jump
+            gravityMultiplier = GAME_CONFIG.PLAYER.GRAVITY_MULTIPLIER_JUMPING
+          }
+
+          // Apply gravity with multiplier
+          entity.velocityY += this.gravity * gravityMultiplier * frameScale
         }
       } else {
         // For non-player entities, always apply gravity

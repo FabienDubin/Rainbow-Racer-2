@@ -19,6 +19,7 @@ export const GAME_CONFIG = {
     HEIGHT: 64,
     SPEED: 5,                    // Horizontal movement speed (pixels/frame)
     JUMP_FORCE: -12,             // Initial jump velocity (negative = up)
+    GRAVITY_MULTIPLIER_JUMPING: 0.5, // Reduced gravity when holding jump
     FLAP_FORCE: -15,             // Flap boost velocity (stronger than jump)
     GLIDE_FALL_SPEED: -2,        // Max fall speed during glide
     GLIDE_GRAVITY_MULT: 0.3,     // Gravity multiplier when gliding
@@ -32,6 +33,10 @@ export const GAME_CONFIG = {
   PARTICLES: {
     MAX_COUNT: 500,              // Maximum active particles at once
     POOL_SIZE: 500,              // Pre-allocated particle pool size
+    DUST_COUNT: 5,               // Number of dust particles on jump
+    DUST_LIFETIME: 0.3,          // Dust particle lifetime in seconds
+    DUST_SPEED_MIN: 20,          // Min dust particle velocity
+    DUST_SPEED_MAX: 60,          // Max dust particle velocity
   },
 
   // Camera settings

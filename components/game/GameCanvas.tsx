@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState } from 'react'
 import { GameEngine } from '@/game/core/GameEngine'
+import { AudioManager } from '@/game/core/AudioManager'
 
 /**
  * GameCanvas component - Main canvas wrapper for the game engine
@@ -45,6 +46,9 @@ export default function GameCanvas() {
     const canvas = canvasRef.current
     if (!canvas) return
 
+    // Preload audio assets
+    AudioManager.preloadSounds(['/audio/sfx/jump.mp3'])
+
     // Create and start GameEngine
     const engine = new GameEngine(canvas)
     gameEngineRef.current = engine
@@ -57,6 +61,7 @@ export default function GameCanvas() {
     // Cleanup on unmount
     return () => {
       engine.destroy()
+      AudioManager.clearAll()
       gameEngineRef.current = null
     }
   }, []) // Only run once on mount

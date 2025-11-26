@@ -2,9 +2,12 @@ import { Player } from '../entities/Player'
 import { Entity } from '../entities/Entity'
 import { InputManager } from './InputManager'
 import { GameLoop } from './GameLoop'
+import { AudioManager } from './AudioManager'
 import { PhysicsSystem } from '../systems/PhysicsSystem'
 import { CollisionSystem } from '../systems/CollisionSystem'
 import { RenderSystem } from '../systems/RenderSystem'
+import { ParticleSystem } from '../systems/ParticleSystem'
+import { GAME_CONFIG } from '@/lib/constants'
 
 /**
  * GameState - Current state of the game
@@ -38,6 +41,7 @@ export class GameEngine {
   private physicsSystem: PhysicsSystem
   private collisionSystem: CollisionSystem
   private renderSystem: RenderSystem
+  private particleSystem: ParticleSystem
 
   // Entities
   private player: Player
@@ -60,6 +64,7 @@ export class GameEngine {
     this.physicsSystem = new PhysicsSystem()
     this.collisionSystem = new CollisionSystem(canvas.width, canvas.height)
     this.renderSystem = new RenderSystem(ctx, canvas.width, canvas.height)
+    this.particleSystem = new ParticleSystem()
 
     // Initialize player at center-bottom of screen
     const startX = canvas.width / 2 - 32 // Center horizontally (32 = half of 64)
@@ -142,7 +147,9 @@ export class GameEngine {
     this.processPlayerInput()
 
     // 3. Update physics (gravity + velocity integration)
-    this.physicsSystem.update(deltaTime, this.entities)
+    // Pass Space held state for variable jump height
+    const isSpaceHeld = this.inputManager.isPressed('Space')
+    this.physicsSystem.update(deltaTime, this.entities, isSpaceHeld)
 
     // 4. Check and resolve collisions
     this.collisionSystem.update(this.player)
@@ -151,12 +158,16 @@ export class GameEngine {
     for (const entity of this.entities) {
       entity.update(deltaTime)
     }
+
+    // 6. Update particle system
+    this.particleSystem.update(deltaTime)
   }
 
   /**
    * Process player movement input
    */
   private processPlayerInput(): void {
+    // Horizontal movement
     const left = this.inputManager.isLeftPressed()
     const right = this.inputManager.isRightPressed()
 
@@ -167,12 +178,38 @@ export class GameEngine {
     } else {
       this.player.handleMovement('none')
     }
+
+    // Jump input - Space just pressed and player is grounded
+    if (this.inputManager.justPressed('Space')) {
+      const didJump = this.player.handleJump()
+
+      // If jump was successful, play SFX and spawn dust particles
+      if (didJump) {
+        // Play jump sound with slight pitch variation
+        AudioManager.playWithPitchVariation('jump', 0.1, 0.8)
+
+        // Spawn dust particles at player's feet
+        // Pass player velocity so particles go opposite to movement direction
+        const dustX = this.player.x + this.player.width / 2
+        const dustY = this.player.y + this.player.height
+        this.particleSystem.spawnDustParticles(
+          dustX,
+          dustY,
+          GAME_CONFIG.PARTICLES.DUST_COUNT,
+          this.player.velocityX
+        )
+      }
+    }
   }
 
   /**
    * Main render function - called each frame after update
    */
   private render(): void {
+    // Render entities (includes background clear and ground line)
     this.renderSystem.render(this.entities)
+
+    // Render particles as overlay (after entities)
+    this.particleSystem.render(this.ctx, 0, 0) // Camera offset 0 for now
   }
 }

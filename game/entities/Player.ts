@@ -54,6 +54,21 @@ export class Player extends Entity {
   }
 
   /**
+   * Handle jump input
+   * Applies JUMP_FORCE to velocityY if grounded
+   * Returns true if jump was executed, false otherwise
+   */
+  handleJump(): boolean {
+    if (this.jumpState !== 'grounded') {
+      return false
+    }
+
+    this.velocityY = GAME_CONFIG.PLAYER.JUMP_FORCE
+    this.jumpState = 'jumping'
+    return true
+  }
+
+  /**
    * Called when player lands on ground or platform
    * Resets jump state and flap count
    */
