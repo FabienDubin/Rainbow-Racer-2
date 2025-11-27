@@ -131,6 +131,59 @@ export class ParticleSystem {
   }
 
   /**
+   * Spawn glide trail particles
+   * Creates a subtle white/silver trail behind the unicorn during glide
+   * @param x X position (center of player)
+   * @param y Y position (center of player)
+   * @param playerVelocityX Player's horizontal velocity (trail goes opposite direction)
+   */
+  spawnGlideTrail(x: number, y: number, playerVelocityX: number = 0): void {
+    const {
+      GLIDE_TRAIL_COUNT,
+      GLIDE_TRAIL_LIFETIME,
+      GLIDE_TRAIL_SIZE,
+      GLIDE_TRAIL_SPEED_MIN,
+      GLIDE_TRAIL_SPEED_MAX
+    } = GAME_CONFIG.PARTICLES
+
+    // Silver/white colors for trail
+    const trailColors = ['#ffffff', '#e0e0e0', '#d0d8e0', '#c8d4e0', '#f0f4f8']
+
+    for (let i = 0; i < GLIDE_TRAIL_COUNT; i++) {
+      const particle = this.pool.acquire()
+      if (!particle) break // Pool exhausted
+
+      // Trail goes backwards (opposite to movement)
+      // Base direction: slightly upward and backwards
+      const baseAngle = playerVelocityX >= 0 ? Math.PI : 0 // Left if moving right, right if moving left
+      const spreadAngle = Math.PI * 0.3 // Spread of ~54 degrees
+      const angle = baseAngle + (Math.random() - 0.5) * spreadAngle
+
+      const speed = GLIDE_TRAIL_SPEED_MIN + Math.random() * (GLIDE_TRAIL_SPEED_MAX - GLIDE_TRAIL_SPEED_MIN)
+      const velocityX = Math.cos(angle) * speed
+      const velocityY = Math.sin(angle) * speed - 10 // Slight upward drift
+
+      // Random position offset for spread effect
+      const offsetX = (Math.random() - 0.5) * 30
+      const offsetY = (Math.random() - 0.5) * 20
+
+      const color = trailColors[Math.floor(Math.random() * trailColors.length)]
+      const size = GLIDE_TRAIL_SIZE + Math.random() * 2
+
+      particle.init(
+        x + offsetX,
+        y + offsetY,
+        velocityX,
+        velocityY,
+        color,
+        GLIDE_TRAIL_LIFETIME + Math.random() * 0.1,
+        size,
+        0.1 // Very light gravity
+      )
+    }
+  }
+
+  /**
    * Spawn sparkle particles (for collectibles, power-ups)
    * @param x X position
    * @param y Y position

@@ -37,12 +37,14 @@ export class PhysicsSystem {
         if (!entity.isGrounded()) {
           // Calculate gravity multiplier based on jump state and input
           // Reduced gravity when:
-          // - Player is in 'jumping' state (ascending)
-          // - Space is held
-          // - velocityY < 0 (still going up)
+          // - Player is in 'jumping' state (ascending) AND Space is held AND still going up
+          // - Player is in 'gliding' state (reduced to 30%)
           let gravityMultiplier = 1.0
 
-          if (
+          if (entity.jumpState === 'gliding') {
+            // Gliding: significantly reduced gravity
+            gravityMultiplier = GAME_CONFIG.PLAYER.GLIDE_GRAVITY_MULT
+          } else if (
             entity.jumpState === 'jumping' &&
             isSpaceHeld &&
             entity.velocityY < 0
@@ -53,6 +55,15 @@ export class PhysicsSystem {
 
           // Apply gravity with multiplier
           entity.velocityY += this.gravity * gravityMultiplier * frameScale
+
+          // Cap fall speed when gliding
+          if (entity.jumpState === 'gliding') {
+            // GLIDE_FALL_SPEED is negative, so negate it to get max positive velocityY
+            const maxFallSpeed = -GAME_CONFIG.PLAYER.GLIDE_FALL_SPEED
+            if (entity.velocityY > maxFallSpeed) {
+              entity.velocityY = maxFallSpeed
+            }
+          }
         }
       } else {
         // For non-player entities, always apply gravity

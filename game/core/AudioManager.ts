@@ -12,6 +12,9 @@ export class AudioManager {
   // Cached audio buffers
   private static buffers: Map<string, AudioBuffer> = new Map()
 
+  // Active looping sounds (sound name -> source node)
+  private static loopingSources: Map<string, AudioBufferSourceNode> = new Map()
+
   // Master volume (0.0 to 1.0)
   private static masterVolume: number = 1.0
 
@@ -190,6 +193,74 @@ export class AudioManager {
   }
 
   /**
+   * Play a sound in a loop
+   * Useful for ambient sounds, glide SFX, etc.
+   * @param soundName Name of the sound (without extension)
+   * @param volume Volume multiplier (0.0 to 1.0), defaults to 1.0
+   */
+  static playLoop(soundName: string, volume: number = 1.0): void {
+    if (!this.isAvailable || !this.audioContext) {
+      return
+    }
+
+    // Don't start if already looping
+    if (this.loopingSources.has(soundName)) {
+      return
+    }
+
+    const buffer = this.buffers.get(soundName)
+    if (!buffer) {
+      console.warn(`Sound not found for loop: ${soundName}`)
+      return
+    }
+
+    this.resumeIfNeeded()
+
+    try {
+      const source = this.audioContext.createBufferSource()
+      source.buffer = buffer
+      source.loop = true // Enable looping
+
+      const gainNode = this.audioContext.createGain()
+      gainNode.gain.value = volume * this.masterVolume
+
+      source.connect(gainNode)
+      gainNode.connect(this.audioContext.destination)
+
+      source.start(0)
+
+      // Store reference for later stopping
+      this.loopingSources.set(soundName, source)
+    } catch (error) {
+      console.warn(`Failed to play looping sound: ${soundName}`, error)
+    }
+  }
+
+  /**
+   * Stop a looping sound
+   * @param soundName Name of the sound to stop
+   */
+  static stopLoop(soundName: string): void {
+    const source = this.loopingSources.get(soundName)
+    if (source) {
+      try {
+        source.stop()
+      } catch {
+        // Ignore errors (source may already be stopped)
+      }
+      this.loopingSources.delete(soundName)
+    }
+  }
+
+  /**
+   * Check if a sound is currently looping
+   * @param soundName Name of the sound
+   */
+  static isLooping(soundName: string): boolean {
+    return this.loopingSources.has(soundName)
+  }
+
+  /**
    * Set master volume
    * @param volume Volume level (0.0 to 1.0)
    */
@@ -220,10 +291,15 @@ export class AudioManager {
   }
 
   /**
-   * Clear all cached audio buffers
+   * Clear all cached audio buffers and stop all loops
    * Call this when cleaning up the game
    */
   static clearAll(): void {
+    // Stop all looping sounds
+    for (const [soundName] of this.loopingSources) {
+      this.stopLoop(soundName)
+    }
+    this.loopingSources.clear()
     this.buffers.clear()
   }
 }

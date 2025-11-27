@@ -44,6 +44,13 @@ export const GAME_CONFIG = {
     FEATHER_SIZE: 6,             // Feather particle size in pixels (4-8px)
     FEATHER_SPEED_MIN: 40,       // Min feather particle velocity
     FEATHER_SPEED_MAX: 80,       // Max feather particle velocity
+    // Glide trail particles
+    GLIDE_TRAIL_COUNT: 6,        // Particles spawned per frame during glide
+    GLIDE_TRAIL_LIFETIME: 0.3,   // Trail particle lifetime (short)
+    GLIDE_TRAIL_SIZE: 2,         // Small particles for trail effect
+    GLIDE_TRAIL_ALPHA: 0.5,      // Semi-transparent
+    GLIDE_TRAIL_SPEED_MIN: 10,   // Min trail velocity
+    GLIDE_TRAIL_SPEED_MAX: 30,   // Max trail velocity
   },
 
   // Camera settings

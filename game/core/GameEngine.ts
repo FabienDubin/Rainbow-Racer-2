@@ -47,6 +47,9 @@ export class GameEngine {
   private player: Player
   private entities: Entity[]
 
+  // Tracks previous glide state for SFX transitions
+  private wasPlayerGliding: boolean
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
 
@@ -73,6 +76,9 @@ export class GameEngine {
 
     // Entities array for systems to operate on
     this.entities = [this.player]
+
+    // Initialize glide state tracking
+    this.wasPlayerGliding = false
 
     // Initialize game loop with callbacks
     this.gameLoop = new GameLoop(
@@ -154,13 +160,49 @@ export class GameEngine {
     // 4. Check and resolve collisions
     this.collisionSystem.update(this.player)
 
-    // 5. Update all entities (state changes, animations, etc.)
+    // 5. Handle glide effects (SFX and particles)
+    this.handleGlideEffects()
+
+    // 6. Update all entities (state changes, animations, etc.)
     for (const entity of this.entities) {
       entity.update(deltaTime)
     }
 
-    // 6. Update particle system
+    // 7. Update particle system
     this.particleSystem.update(deltaTime)
+  }
+
+  /**
+   * Handle glide-related effects: SFX loop and trail particles
+   * Manages glide state transitions and their effects
+   */
+  private handleGlideEffects(): void {
+    const isCurrentlyGliding = this.player.isGliding()
+
+    // Handle glide state transitions for SFX
+    if (isCurrentlyGliding && !this.wasPlayerGliding) {
+      // Just started gliding - start SFX loop
+      AudioManager.playLoop('glide-loop', 0.6)
+    } else if (!isCurrentlyGliding && this.wasPlayerGliding) {
+      // Just stopped gliding - stop SFX loop
+      AudioManager.stopLoop('glide-loop')
+    }
+
+    // Spawn trail particles while gliding
+    if (isCurrentlyGliding) {
+      const trailX = this.player.x + this.player.width / 2
+      const trailY = this.player.y + this.player.height / 2
+      this.particleSystem.spawnGlideTrail(trailX, trailY, this.player.velocityX)
+    }
+
+    // Stop SFX if player landed while gliding
+    if (this.player.wasGliding) {
+      AudioManager.stopLoop('glide-loop')
+      this.player.wasGliding = false // Reset the flag
+    }
+
+    // Update tracking state
+    this.wasPlayerGliding = isCurrentlyGliding
   }
 
   /**
@@ -216,6 +258,10 @@ export class GameEngine {
         }
       }
     }
+
+    // Handle glide input (Space held allows entering/maintaining glide)
+    const isSpaceHeld = this.inputManager.isPressed('Space')
+    this.player.handleGlide(isSpaceHeld)
   }
 
   /**

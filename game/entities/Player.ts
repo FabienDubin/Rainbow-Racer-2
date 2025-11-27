@@ -26,6 +26,9 @@ export class Player extends Entity {
   // Animation state
   public flapAnimationTimer: number
 
+  // Tracks if player was gliding when landing (for SFX cleanup)
+  public wasGliding: boolean
+
   // Movement tracking
   private movementDirection: MovementDirection
 
@@ -35,22 +38,30 @@ export class Player extends Entity {
     this.flapCount = 0
     this.maxFlaps = GAME_CONFIG.PLAYER.MAX_FLAPS
     this.flapAnimationTimer = 0
+    this.wasGliding = false
     this.movementDirection = 'none'
   }
 
   /**
    * Handle horizontal movement input
    * Sets velocity based on direction; stops immediately when direction is 'none'
+   * Applies horizontal speed boost when gliding
    */
   handleMovement(direction: MovementDirection): void {
     this.movementDirection = direction
 
+    // Calculate speed with glide multiplier if applicable
+    const baseSpeed = GAME_CONFIG.PLAYER.SPEED
+    const speed = this.jumpState === 'gliding'
+      ? baseSpeed * GAME_CONFIG.PLAYER.GLIDE_HORIZONTAL_MULT
+      : baseSpeed
+
     switch (direction) {
       case 'left':
-        this.velocityX = -GAME_CONFIG.PLAYER.SPEED
+        this.velocityX = -speed
         break
       case 'right':
-        this.velocityX = GAME_CONFIG.PLAYER.SPEED
+        this.velocityX = speed
         break
       case 'none':
         // Stop immediately - no momentum (as per AC #2)
@@ -103,10 +114,49 @@ export class Player extends Entity {
   }
 
   /**
+   * Handle glide input
+   * Enters glide mode if in 'flapped' state and Space is held
+   * Maintains glide mode while Space is held
+   * Exits glide mode when Space is released
+   * Returns true if currently gliding, false otherwise
+   */
+  handleGlide(isHolding: boolean): boolean {
+    // Can only enter glide if in 'flapped' state and holding Space
+    if (this.jumpState === 'flapped' && isHolding) {
+      this.jumpState = 'gliding'
+      return true
+    }
+
+    // Maintain glide while holding Space
+    if (this.jumpState === 'gliding' && isHolding) {
+      return true
+    }
+
+    // Exit glide when Space is released
+    if (this.jumpState === 'gliding' && !isHolding) {
+      this.jumpState = 'falling'
+      return false
+    }
+
+    return false
+  }
+
+  /**
+   * Check if player is currently gliding
+   */
+  isGliding(): boolean {
+    return this.jumpState === 'gliding'
+  }
+
+  /**
    * Called when player lands on ground or platform
    * Resets jump state and flap count
+   * Sets wasGliding flag for GameEngine to stop SFX if needed
    */
   onLand(): void {
+    // Track if we were gliding for SFX cleanup
+    this.wasGliding = this.jumpState === 'gliding'
+
     this.jumpState = 'grounded'
     this.flapCount = 0
     this.flapAnimationTimer = 0
@@ -134,19 +184,22 @@ export class Player extends Entity {
     }
 
     // Update jump state based on vertical velocity
-    // Note: 'flapped' state is set in handleFlap() and transitions to falling when velocity > 0
+    // Note: 'flapped' and 'gliding' states are managed by handleFlap()/handleGlide()
+    // Don't override these states automatically
     if (!this.isGrounded()) {
       if (this.jumpState === 'flapped' && this.velocityY > 0) {
         // After flap, when falling down, transition to falling state
+        // (only if not transitioning to glide - glide is handled in handleGlide)
         this.jumpState = 'falling'
-      } else if (this.jumpState !== 'flapped') {
-        // Normal jump state transitions (not during flapped state)
+      } else if (this.jumpState !== 'flapped' && this.jumpState !== 'gliding') {
+        // Normal jump state transitions (not during flapped or gliding state)
         if (this.velocityY < 0) {
           this.jumpState = 'jumping'
         } else if (this.velocityY > 0) {
           this.jumpState = 'falling'
         }
       }
+      // Note: 'gliding' state is preserved - it's only changed by handleGlide() or onLand()
     }
   }
 
@@ -193,6 +246,35 @@ export class Player extends Entity {
       ctx.fillRect(0, 0, this.width, this.height)
 
       // Restore context
+      ctx.restore()
+    } else if (this.jumpState === 'gliding') {
+      // Glide animation: wings spread with slight rotation
+      ctx.save()
+
+      // Translate to center for rotation
+      const centerX = screenX + this.width / 2
+      const centerY = screenY + this.height / 2
+      ctx.translate(centerX, centerY)
+
+      // Slight rotation (5-10 degrees) for aerodynamic effect - direction based on movement
+      const rotationAngle = this.velocityX >= 0 ? 0.12 : -0.12 // ~7 degrees
+      ctx.rotate(rotationAngle)
+
+      // Draw main body (slightly compressed vertically for glide pose)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(-this.width / 2, -this.height / 2 + 5, this.width, this.height - 10)
+
+      // Draw extended wings (horizontal rectangles on each side)
+      const wingWidth = 25
+      const wingHeight = 8
+      ctx.fillStyle = 'rgba(200, 220, 255, 0.9)' // Light blue-ish white for wings
+
+      // Left wing
+      ctx.fillRect(-this.width / 2 - wingWidth + 5, -wingHeight / 2, wingWidth, wingHeight)
+
+      // Right wing
+      ctx.fillRect(this.width / 2 - 5, -wingHeight / 2, wingWidth, wingHeight)
+
       ctx.restore()
     } else {
       // Normal rendering: white rectangle (64x64 as per AC #1)

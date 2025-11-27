@@ -47,7 +47,11 @@ export default function GameCanvas() {
     if (!canvas) return
 
     // Preload audio assets
-    AudioManager.preloadSounds(['/audio/sfx/jump.mp3', '/audio/sfx/flap.mp3'])
+    AudioManager.preloadSounds([
+      '/audio/sfx/jump.mp3',
+      '/audio/sfx/flap.mp3',
+      '/audio/sfx/glide-loop.mp3'
+    ])
 
     // Create and start GameEngine
     const engine = new GameEngine(canvas)
