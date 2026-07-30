@@ -47,6 +47,13 @@ hidden behind "it's a bit weird". Keep them running as the physics changes.
   Wrapping is for free flight only; when the rope was allowed the same shortcut you
   could grab something 590px away on the far side and get yanked bodily across.
 
+- **bolts.js** — the question that decides whether a hazard is a mechanic or just bad
+  luck: does a player who READS the telegraph do measurably better than one who ignores
+  it? First version of the bolt failed this outright (self-cycling, live 0.16s in 3s, so
+  it overlapped the player ~5% of the time and reading it bought nothing).
+- **phase1render.js** — asserts the palier lines and each bolt state actually draw, and
+  that the strike lane hits inside and misses just outside.
+
 - **marker.js** — the off-screen indicator. Uses a canvas stub that *records* draw
   calls instead of discarding them, so placement and rotation can be asserted without a
   browser. Handy pattern for any other HUD element that is hard to catch on camera.

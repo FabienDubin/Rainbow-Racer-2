@@ -66,6 +66,10 @@ export default function ProtoShell() {
           <dd>arriver vite sur une ancre basse relance plus haut</dd>
           <dt>Treuil</dt>
           <dd>la qualité de ton dernier lâcher paie le suivant</dd>
+          <dt>Paliers</dt>
+          <dd>franchis la ligne en pointillés, l&apos;orage recule</dd>
+          <dt>Éclairs</dt>
+          <dd>le nuage clignote, puis frappe sa ligne 0,45 s après</dd>
         </dl>
         <p className="proto-aside-note">
           Rectangles blancs sur fond noir&nbsp;: aucun habillage, pour ne juger que la
@@ -84,8 +88,10 @@ export default function ProtoShell() {
               <>
                 <p className="proto-alt">{stats.altitudeM} m</p>
                 <ul className="proto-stats">
+                  <li>paliers <b>{stats.checkpoints}</b></li>
                   <li>chaîne max <b>{stats.bestChain}</b></li>
                   <li>accroches <b>{stats.attaches}</b></li>
+                  <li>éclairs pris <b>{stats.hits}</b></li>
                   <li>ailes <b>{stats.flaps}</b></li>
                   <li>temps <b>{stats.timeSurvived}s</b></li>
                 </ul>

@@ -141,3 +141,31 @@ export const STREAK_MIN_SPEED = 380; // px/s before streaks appear
 export const STREAK_MAX_SPEED = 1100; // px/s where they are at full strength
 export const STREAK_COUNT = 14;
 export const CAM_SPEED_LOOKAHEAD = 0.16; // how far ahead the camera leans, per px/s
+
+// ---- PHASE 1: paliers (checkpoints) ----
+// The storm alone is a monotone squeeze. Checkpoints give the run a pulse: reach one and
+// it is shoved back down, which turns constant pressure into tension-then-relief and
+// gives you something to aim at other than "not dying".
+export const CHECKPOINT_EVERY_M = 150;
+export const CHECKPOINT_PUSHBACK = 560; // px the storm loses when you cross one
+
+// ---- PHASE 1: les Éclairs ----
+// Danger you read, not danger you're unlucky about: a thunderhead flashes, and only
+// strikes its lane BOLT_TELEGRAPH seconds later. Getting hit costs tempo rather than a
+// life — you are stunned, you drop, and the storm gains on you. That is the whole
+// failure model: nothing kills you but losing altitude.
+// A thunderhead ARMS when you come near, rather than cycling on its own clock. That
+// distinction is the whole mechanic: measured, a self-cycling bolt striking 0.16s out of
+// every 3s only overlapped the player ~5% of the time, so reading the telegraph bought
+// nothing (the "reader" bot actually took MORE hits than the one ignoring it). Arming on
+// approach means every thunderhead you meet is a real timing decision — rush the lane
+// before it fires, or hold back and let it pass.
+export const BOLT_START_M = 110; // no bolts before this altitude — room to learn the Arc
+export const BOLT_ARM_RANGE = 430; // px below the lane at which it wakes up
+export const BOLT_TELEGRAPH = 0.5; // s of warning before the strike
+export const BOLT_STRIKE = 0.35; // s the lane is live — long enough that waiting costs you
+export const BOLT_COOLDOWN = 1.7; // s before it can arm again
+export const BOLT_THICKNESS = 34; // px of live lane
+export const BOLT_ROWS_APART = 3; // one thunderhead every N anchor rows, at most
+export const STUN_TIME = 0.55; // s of no control after a hit
+export const STUN_DROP = 260; // px/s downward kick, so a hit visibly costs you altitude

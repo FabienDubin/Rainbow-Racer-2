@@ -17,12 +17,25 @@ import {
   CAM_SPEED_LOOKAHEAD, MAX_ATTACH_TIME_DIVE, MAX_ATTACH_TIME_LIFT, MAX_SWING_SPEED,
   MAX_SWING_TANGENTIAL, MIN_SWING_ANGLE, PX_PER_METER,
   GRAB_COOLDOWN, REEL_SPEED, REF_RELEASE_SPEED, REGRAB_LOCKOUT, ROPE_MIN, ROW_MARGIN_X,
-  ROW_SPACING, WRAP_MARGIN,
+  ROW_SPACING, WRAP_MARGIN, BOLT_ARM_RANGE, BOLT_COOLDOWN, BOLT_ROWS_APART,
+  BOLT_START_M, BOLT_STRIKE, BOLT_TELEGRAPH, BOLT_THICKNESS, CHECKPOINT_EVERY_M,
+  CHECKPOINT_PUSHBACK, STUN_DROP, STUN_TIME,
   START_VY, STORM_ACCEL, STORM_SPEED_BASE, STORM_START_BELOW,
   STREAK_COUNT, STREAK_MAX_SPEED, STREAK_MIN_SPEED, SWING_PUMP, SWING_RECOVERY_DRIVE,
   SWING_STALL_FLOOR, RELEASE_KICK, TETHER_RANGE, VIEW_H, VIEW_W, WHIP_RECOVERY,
   WINCH_BUDGET, WINCH_FLOOR,
 } from "./proto.constants";
+
+// A thunderhead that strikes its own altitude lane on a cycle. The whole point is the
+// telegraph: it flashes first, so being hit is a misread rather than bad luck.
+type BoltState = "dormant" | "telegraph" | "strike" | "cooldown";
+
+interface Bolt {
+  x: number; // where the cloud sits — the strike spans the full width
+  y: number;
+  state: BoltState;
+  timer: number; // seconds spent in the current state
+}
 
 interface Anchor {
   x: number;
@@ -37,6 +50,8 @@ export interface ProtoStats {
   attaches: number;
   flaps: number;
   slips: number; // releases with no real swing behind them
+  hits: number; // times caught by a bolt
+  checkpoints: number; // paliers crossed
   pureFlight: boolean; // reached the end without a single flap
   timeSurvived: number;
 }
@@ -72,6 +87,12 @@ export class ProtoEngine {
   private winchCharge = 1; // 0..1, set by the quality of your last release
   private lastReleaseQuality = 1;
   private stormY = -STORM_START_BELOW; // Le Grondement, rising from below
+  private bolts: Bolt[] = [];
+  private stunTime = 0; // s of lost control after being hit
+  private hits = 0;
+  private nextCheckpointM = CHECKPOINT_EVERY_M;
+  private checkpoints = 0;
+  private checkpointToast = 0;
 
   // Wings
   private flapCharges = FLAP_CHARGES;
@@ -82,6 +103,7 @@ export class ProtoEngine {
   private generatedTo = 0;
   private lastGenX = VIEW_W / 2;
   private rowsSinceSkip = 0;
+  private rowsSinceBolt = 0;
   private camY = 0;
   private peakY = 0;
   private chain = 0;
@@ -192,9 +214,12 @@ export class ProtoEngine {
     this.flashRelease = Math.max(0, this.flashRelease - dt * 3);
     this.flashAttach = Math.max(0, this.flashAttach - dt * 3);
     this.whipFlash = Math.max(0, this.whipFlash - dt * 2.5);
+    this.stunTime = Math.max(0, this.stunTime - dt);
+    this.checkpointToast = Math.max(0, this.checkpointToast - dt);
 
-    // ---- Input resolution: one press means "attach", or "flap" if nothing in range
-    if (this.pressEdge) {
+    // ---- Input resolution: one press means "attach", or "flap" if nothing in range.
+    // Stunned means exactly that: no grabbing, no flapping, you just fall.
+    if (this.pressEdge && this.stunTime <= 0) {
       const target = this.pickAnchor();
       if (target) this.attach(target);
       else this.flap();
@@ -242,6 +267,18 @@ export class ProtoEngine {
 
     this.generateUpTo(this.camY + this.viewH * 1.2);
     this.anchors = this.anchors.filter((a) => a.y > this.camY - this.viewH);
+
+    // ---- Paliers: crossing one shoves the storm back down
+    const altM = this.peakY / PX_PER_METER;
+    if (altM >= this.nextCheckpointM) {
+      this.checkpoints++;
+      this.nextCheckpointM += CHECKPOINT_EVERY_M;
+      this.stormY -= CHECKPOINT_PUSHBACK;
+      this.checkpointToast = 2.2;
+    }
+
+    // ---- Éclairs
+    this.updateBolts(dt);
 
     // ---- Le Grondement rises, and accelerates
     this.stormY += (STORM_SPEED_BASE + STORM_ACCEL * this.time) * dt;
@@ -465,6 +502,45 @@ export class ProtoEngine {
     if (this.attachTime >= this.attachLimit) this.release(true);
   }
 
+  // A bolt cycles: quiet → telegraph (it flashes) → strike (its lane is live) → quiet.
+  // Being hit costs tempo, never a life: you are stunned, you drop, the storm closes.
+  private updateBolts(dt: number): void {
+    for (const b of this.bolts) {
+      b.timer += dt;
+
+      switch (b.state) {
+        case "dormant": {
+          // Wakes only when you are climbing into its lane from below
+          const below = b.y - this.py;
+          if (below > 0 && below < BOLT_ARM_RANGE) {
+            b.state = "telegraph";
+            b.timer = 0;
+          }
+          break;
+        }
+        case "telegraph":
+          if (b.timer >= BOLT_TELEGRAPH) { b.state = "strike"; b.timer = 0; }
+          break;
+        case "strike":
+          if (b.timer >= BOLT_STRIKE) { b.state = "cooldown"; b.timer = 0; }
+          break;
+        case "cooldown":
+          if (b.timer >= BOLT_COOLDOWN) { b.state = "dormant"; b.timer = 0; }
+          break;
+      }
+
+      if (b.state === "strike" && this.stunTime <= 0 && Math.abs(this.py - b.y) < BOLT_THICKNESS / 2) {
+        this.hits++;
+        this.stunTime = STUN_TIME;
+        this.chain = 0;
+        this.winchCharge = WINCH_FLOOR;
+        if (this.anchor) this.release(true);
+        this.vy = Math.min(this.vy, 0) - STUN_DROP;
+      }
+    }
+    this.bolts = this.bolts.filter((b) => b.y > this.camY - this.viewH);
+  }
+
   // Anchors are generated as a *reachable chain*, not scattered at random.
   // Random placement was the flaw that made good launches worthless: you would
   // fling yourself perfectly upward and there was simply nothing up there.
@@ -502,6 +578,23 @@ export class ProtoEngine {
         });
       }
 
+      // A thunderhead guarding this stretch. Never at the very first altitudes: the Arc
+      // has to be learned before it is tested.
+      if (
+        this.generatedTo / PX_PER_METER > BOLT_START_M &&
+        this.rowsSinceBolt >= BOLT_ROWS_APART &&
+        Math.random() < 0.6
+      ) {
+        this.rowsSinceBolt = 0;
+        this.bolts.push({
+          x: clampX(x + (Math.random() - 0.5) * 300),
+          y: this.generatedTo + ROW_SPACING * 0.5,
+          state: "dormant",
+          timer: 0,
+        });
+      }
+      this.rowsSinceBolt++;
+
       // A high rung to skip toward — the payoff for a well-aimed release
       if (this.rowsSinceSkip >= 3 && Math.random() < 0.55) {
         this.rowsSinceSkip = 0;
@@ -523,6 +616,8 @@ export class ProtoEngine {
       attaches: this.attaches,
       flaps: this.flaps,
       slips: this.slips,
+      hits: this.hits,
+      checkpoints: this.checkpoints,
       pureFlight: this.flaps === 0,
       timeSurvived: Math.round(this.time),
     });
@@ -539,6 +634,8 @@ export class ProtoEngine {
     ctx.fillRect(0, 0, VIEW_W, this.viewH);
 
     this.drawAltitudeGrid(ctx);
+    this.drawCheckpoints(ctx);
+    this.drawBolts(ctx);
     this.drawStreaks(ctx);
     this.drawStorm(ctx);
 
@@ -643,6 +740,73 @@ export class ProtoEngine {
       ctx.stroke();
       const m = Math.round(y / PX_PER_METER);
       if (m % 50 === 0 && m >= 0) ctx.fillText(`${m}m`, 6, sy - 5);
+    }
+  }
+
+  // The next palier, drawn as a line you can aim at. Seeing the reward coming is what
+  // turns the storm from a monotone squeeze into a rhythm.
+  private drawCheckpoints(ctx: CanvasRenderingContext2D): void {
+    const spacing = CHECKPOINT_EVERY_M * PX_PER_METER;
+    const from = Math.floor((this.camY - this.viewH) / spacing) * spacing;
+    for (let y = from; y < this.camY + this.viewH; y += spacing) {
+      if (y <= 0) continue;
+      const sy = this.screenY(y);
+      const crossed = y / PX_PER_METER < this.nextCheckpointM - CHECKPOINT_EVERY_M + 1;
+      ctx.strokeStyle = crossed ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.5)";
+      ctx.lineWidth = crossed ? 1 : 2;
+      ctx.setLineDash(crossed ? [4, 10] : [14, 8]);
+      ctx.beginPath();
+      ctx.moveTo(0, sy);
+      ctx.lineTo(VIEW_W, sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (!crossed) {
+        ctx.fillStyle = "rgba(255,255,255,0.6)";
+        ctx.font = "11px ui-monospace, monospace";
+        ctx.textAlign = "right";
+        ctx.fillText(`PALIER ${Math.round(y / PX_PER_METER)}m`, VIEW_W - 8, sy - 6);
+      }
+    }
+  }
+
+  // Telegraph first, strike second. The warning is the mechanic — without it a bolt is
+  // just bad luck, and dodging has nothing to be good at.
+  private drawBolts(ctx: CanvasRenderingContext2D): void {
+    for (const b of this.bolts) {
+      const sy = this.screenY(b.y);
+      if (sy < -60 || sy > this.viewH + 60) continue;
+      const state = b.state;
+
+      // The cloud itself
+      ctx.strokeStyle = state === "dormant" ? "rgba(255,255,255,0.32)" : "#fff";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(b.x, sy, 30, 13, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      if (state === "telegraph") {
+        // Warning grows as the strike approaches, so the timing is readable
+        const t = Math.min(1, b.timer / BOLT_TELEGRAPH);
+        ctx.globalAlpha = 0.25 + t * 0.5;
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1 + t * 2;
+        ctx.setLineDash([6, 8]);
+        ctx.beginPath();
+        ctx.moveTo(0, sy);
+        ctx.lineTo(VIEW_W, sy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+      } else if (state === "strike") {
+        ctx.fillStyle = "rgba(255,255,255,0.22)";
+        ctx.fillRect(0, sy - BOLT_THICKNESS / 2, VIEW_W, BOLT_THICKNESS);
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(0, sy);
+        ctx.lineTo(VIEW_W, sy);
+        ctx.stroke();
+      }
     }
   }
 
@@ -783,6 +947,28 @@ export class ProtoEngine {
     }
     ctx.fillStyle = "rgba(255,255,255,0.5)";
     ctx.fillText(`${Math.round(this.lastReleaseQuality * 100)}%`, 212, 116);
+
+    if (this.stunTime > 0) {
+      ctx.textAlign = "center";
+      ctx.font = "bold 24px ui-monospace, monospace";
+      ctx.fillStyle = "#fff";
+      ctx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(this.time * 22));
+      ctx.fillText("ÉTOURDI", VIEW_W / 2, this.viewH * 0.42);
+      ctx.globalAlpha = 1;
+      ctx.textAlign = "left";
+    }
+
+    if (this.checkpointToast > 0) {
+      ctx.textAlign = "center";
+      ctx.globalAlpha = Math.min(1, this.checkpointToast);
+      ctx.font = "bold 20px ui-monospace, monospace";
+      ctx.fillStyle = "#fff";
+      ctx.fillText("PALIER FRANCHI", VIEW_W / 2, this.viewH * 0.3);
+      ctx.font = "13px ui-monospace, monospace";
+      ctx.fillText("l'orage recule", VIEW_W / 2, this.viewH * 0.3 + 20);
+      ctx.globalAlpha = 1;
+      ctx.textAlign = "left";
+    }
 
     // Speed readout, and what kind of grab you are on — the arc length differs
     const speed = Math.round(Math.hypot(this.vx, this.vy));
