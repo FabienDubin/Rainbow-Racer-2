@@ -389,8 +389,10 @@ export default function ProtoShell() {
 
             {screen === "lottery" && stats && (
               <>
-                <section className="proto-sec proto-sec--tall">
-                  <h3>{picked === null ? "Choisis une carte" : ""}</h3>
+                <section className="proto-sec proto-sec--tall proto-sec--draw">
+                  <h2 className="proto-draw-title">
+                    {picked === null ? "Choisis une carte" : "Les trois cartes"}
+                  </h2>
                   <div className="proto-cards">
                     {cards.map((c, i) => (
                       <button
@@ -415,9 +417,13 @@ export default function ProtoShell() {
                       </button>
                     ))}
                   </div>
-                  {picked === null && (
-                    <p className="proto-empty">Une seule. Les trois se révèlent ensuite.</p>
-                  )}
+                  {/* One short line. It first stated the obvious ("pick one, the rest
+                      reveal"), then listed what the shop sells — a catalogue nobody reads on
+                      a reward screen. What it needs to say is simply where dust goes. */}
+                  <p className="proto-hint">
+                    <ShopIcon id="dust" size={15} />
+                    <span>Ta poussière s&apos;échange en boutique.</span>
+                  </p>
                 </section>
               </>
             )}
