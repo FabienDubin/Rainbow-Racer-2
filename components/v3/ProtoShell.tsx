@@ -137,8 +137,8 @@ export default function ProtoShell() {
           <dd>le nuage clignote, puis sa ligne frappe</dd>
         </dl>
         <p className="proto-aside-note">
-          Décors et effets dessinés en vectoriel, générés à l&apos;image. Prism vient de la
-          V1 — c&apos;est la même licorne.
+          Tout est dessiné en vectoriel, généré à l&apos;image — Prism comprise. Sa crinière
+          et la corde sont la même matière.
         </p>
       </aside>
 

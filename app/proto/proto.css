@@ -382,3 +382,57 @@
   align-items: center;
   gap: 0.45rem;
 }
+
+/* ---- Character sheet ---- */
+.sheet {
+  min-height: 100dvh;
+  padding: clamp(1.5rem, 5vw, 3rem);
+  background: radial-gradient(120% 90% at 50% 0%, #241d4d 0%, #0d0b1c 70%);
+  color: #cfc8e6;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  overflow-y: auto;
+}
+
+.sheet header { max-width: 46ch; margin-bottom: 2rem; }
+
+.sheet h1 {
+  margin: 0 0 0.6rem;
+  font-size: 1.1rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.sheet header p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  color: rgba(207, 200, 230, 0.6);
+}
+
+.sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1.25rem;
+}
+
+.sheet figure { margin: 0; }
+
+.sheet canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(207, 200, 230, 0.16);
+}
+
+.sheet figcaption {
+  display: grid;
+  gap: 0.15rem;
+  padding-top: 0.6rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.sheet figcaption b { color: #fff; font-weight: 500; }
+.sheet figcaption span { color: rgba(207, 200, 230, 0.55); }

@@ -17,7 +17,8 @@ import { RunConfig } from "./meta";
 import { skyAt, SkyState } from "./art/palette";
 import {
   Camera, drawAnchor, drawDustMote, drawGarlandGem, drawGarlandThread, drawParallax,
-  drawPalier, drawPrism, drawSky, drawStorm, drawTether, drawThundercloud,
+  drawPalier, drawPrism, drawSky, drawStorm, drawTether, drawThundercloud, PrismPose,
+  prismHornTip,
 } from "./art/draw";
 import {
   AIR_DRAG, CAM_FOLLOW_SPEED, CAM_PLAYER_SCREEN_FRAC, CHAIN_DROP_TOLERANCE,
@@ -149,6 +150,7 @@ export class ProtoEngine {
   // Feedback (minimal — just enough to judge feel, no juice)
   private flashRelease = 0;
   private flashAttach = 0;
+  private flapPulse = 0; // decays after each wingbeat, drives the wing and leg animation
 
   private rafId = 0;
   private lastTs = 0;
@@ -159,7 +161,6 @@ export class ProtoEngine {
   // every swing circle into an ellipse — which quietly misreads the physics you are
   // trying to feel. Taller screens now simply show more sky.
   private viewH = VIEW_H;
-  private wingFrames: (HTMLImageElement | undefined)[] = [];
   private sky: SkyState = skyAt(0);
 
   constructor(
@@ -180,18 +181,6 @@ export class ProtoEngine {
     this.viewH = Math.round(VIEW_W * (boxH / boxW));
     canvas.width = VIEW_W;
     canvas.height = this.viewH;
-    // Prism's three wing positions, straight from V1
-    if (typeof Image !== "undefined") {
-      this.wingFrames = [
-        "/img/Unicorn-wings-down.png",
-        "/img/Unicorn-wings-middle.png",
-        "/img/Unicorn-wings-up.png",
-      ].map((src) => {
-        const img = new Image();
-        img.src = src;
-        return img;
-      });
-    }
 
     this.flapCharges = this.maxWings();
     this.talismanLeft = this.cfg.talisman ? 1 : 0;
@@ -204,9 +193,25 @@ export class ProtoEngine {
     this.generateUpTo(this.camY + this.viewH * 1.5);
   }
 
-  // A touch of scale on a fresh attach, so a catch has some pop
+  // Prism reads at ~55px tall on a phone at this scale — big enough to be the hero of the
+  // frame, small enough that the swing arc stays the thing you are reading.
   private dashScale(): number {
-    return 1 + this.flashAttach * 0.12;
+    return 1.35 + this.flashAttach * 0.12;
+  }
+
+  private pose(): PrismPose {
+    return {
+      vx: this.vx,
+      vy: this.vy,
+      scale: this.dashScale(),
+      tumbling: this.stunTime > 0 ? STUN_TIME - this.stunTime : 0,
+      tethered: this.anchor !== null,
+      flapPulse: this.flapPulse,
+      justAttached: this.flashAttach,
+      justReleased: this.flashRelease,
+      light: this.sky.light,
+      time: this.time,
+    };
   }
 
   private camera(): Camera {
@@ -294,6 +299,7 @@ export class ProtoEngine {
     this.flashRelease = Math.max(0, this.flashRelease - dt * 3);
     this.flashAttach = Math.max(0, this.flashAttach - dt * 3);
     this.whipFlash = Math.max(0, this.whipFlash - dt * 2.5);
+    this.flapPulse = Math.max(0, this.flapPulse - dt * 3.6);
     this.stunTime = Math.max(0, this.stunTime - dt);
     this.checkpointToast = Math.max(0, this.checkpointToast - dt);
     this.hitFlash = Math.max(0, this.hitFlash - dt * 3.5);
@@ -506,6 +512,7 @@ export class ProtoEngine {
     if (this.flapCharges <= 0 || this.flapTimer > 0) return;
     this.flapCharges--;
     this.flaps++;
+    this.flapPulse = 1;
     this.flapTimer = FLAP_COOLDOWN;
     this.vy = Math.max(this.vy, 0) + FLAP_IMPULSE;
   }
@@ -836,22 +843,22 @@ export class ProtoEngine {
       }
       ctx.restore();
 
-      drawTether(ctx, this.anchor.x, ay, this.px, this.screenY(this.py), this.sky.light);
+      const horn = prismHornTip(this.pose());
+      drawTether(
+        ctx,
+        this.anchor.x,
+        ay,
+        this.px + horn.dx,
+        this.screenY(this.py) + horn.dy,
+        this.sky.light,
+        this.time
+      );
     }
 
     // Prism herself — the V1 sprite. Not mirrored across the seam: vanishing off one
     // side and reappearing on the other is deliberate.
     const psy = this.screenY(this.py);
-    drawPrism(
-      ctx,
-      this.wingFrames,
-      this.px,
-      psy,
-      this.vx,
-      this.vy,
-      this.dashScale(),
-      this.stunTime > 0 ? STUN_TIME - this.stunTime : 0
-    );
+    drawPrism(ctx, this.px, psy, this.pose());
 
     this.drawOffscreenMarker(ctx);
     ctx.restore();

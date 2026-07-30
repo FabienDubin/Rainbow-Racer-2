@@ -1,11 +1,28 @@
 // Every visual in the game, as pure drawing functions. The engine owns simulation and
 // calls in here to render — so art can be reworked without touching a line of physics.
 //
-// Direction: flat vector shapes, long gradients, layered silhouettes and rim light. No
-// bitmap art except Prism herself, who is the V1 sprite. It costs nothing to ship, stays
-// crisp at any resolution, runs fast on a phone, and looks deliberate rather than cheap.
+// Direction: flat vector shapes, long gradients, layered silhouettes and rim light.
+// Everything, Prism included, is drawn — no bitmaps at all. Reusing the V1 unicorn sprite
+// seemed like nice continuity, but a soft cartoon PNG sitting on faceted vector art simply
+// clashed, and Fab called it: "elle va pas du tout avec le reste". Continuity now lives in
+// the palette and the spirit rather than in a reused file.
 
 import { SkyState, SPECTRUM } from "./palette";
+
+// Samples the spectrum as a continuous loop, so a gradient can be offset over time and
+// flow smoothly instead of stepping between six fixed bands.
+function spectrumAt(t: number): string {
+  const n = SPECTRUM.length;
+  const x = ((t % 1) + 1) % 1;
+  const i = Math.floor(x * n);
+  const f = x * n - i;
+  const a = SPECTRUM[i % n];
+  const b = SPECTRUM[(i + 1) % n];
+  const pa = parseInt(a.slice(1), 16);
+  const pb = parseInt(b.slice(1), 16);
+  const mix = (sa: number, sb: number) => Math.round(sa * (1 - f) + sb * f);
+  return `rgb(${mix((pa >> 16) & 255, (pb >> 16) & 255)},${mix((pa >> 8) & 255, (pb >> 8) & 255)},${mix(pa & 255, pb & 255)})`;
+}
 
 export interface Camera {
   /** World Y at the centre of the view. */
@@ -98,33 +115,57 @@ export function drawTether(
   ay: number,
   px: number,
   py: number,
-  glow: string
+  glow: string,
+  time: number
 ): void {
   const dx = px - ax;
   const dy = py - ay;
   const len = Math.hypot(dx, dy) || 1;
-  // Perpendicular, to fan the bands out across the ribbon's width
-  const nx = -dy / len;
-  const ny = dx / len;
   // A gentle sag makes it read as a rope under load instead of a laser
-  const sag = Math.min(18, len * 0.06);
-  const mx = (ax + px) / 2 + nx * 0;
+  const sag = Math.min(20, len * 0.07);
+  const mx = (ax + px) / 2;
   const my = (ay + py) / 2 + sag;
+
+  // ONE ribbon with the spectrum flowing along it, rather than six stacked strokes.
+  // Stacked bands read as separate lines up close; a single moving gradient reads as one
+  // piece of rainbow, which is what the thing is supposed to be.
+  const g = ctx.createLinearGradient(ax, ay, px, py);
+  const STOPS = 14;
+  const drift = time * 0.32;
+  for (let i = 0; i <= STOPS; i++) {
+    g.addColorStop(i / STOPS, spectrumAt(i / STOPS - drift));
+  }
 
   ctx.save();
   ctx.lineCap = "round";
   ctx.shadowColor = glow;
-  ctx.shadowBlur = 10;
-  SPECTRUM.forEach((colour, i) => {
-    const off = (i - (SPECTRUM.length - 1) / 2) * 1.9;
-    ctx.strokeStyle = colour;
-    ctx.lineWidth = 2.2;
-    ctx.globalAlpha = 0.95;
-    ctx.beginPath();
-    ctx.moveTo(ax + nx * off, ay + ny * off);
-    ctx.quadraticCurveTo(mx + nx * off, my + ny * off, px + nx * off, py + ny * off);
-    ctx.stroke();
-  });
+  ctx.shadowBlur = 12;
+
+  // A soft wide pass underneath gives the ribbon body and a halo
+  ctx.strokeStyle = g;
+  ctx.globalAlpha = 0.32;
+  ctx.lineWidth = 11;
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  ctx.quadraticCurveTo(mx, my, px, py);
+  ctx.stroke();
+
+  // The ribbon itself
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 5.5;
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  ctx.quadraticCurveTo(mx, my, px, py);
+  ctx.stroke();
+
+  // A thin bright core sells it as light rather than paint
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(255,255,255,0.75)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  ctx.quadraticCurveTo(mx, my, px, py);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -434,40 +475,311 @@ export function drawPalier(
 
 // ---------------------------------------------------------------- Prism
 
-// Prism is the V1 unicorn sprite — Fab's own asset, and the continuity with the first
-// game he asked to keep. Wing frame is chosen by vertical speed, so she beats upward and
-// glides downward without any animation state to track.
-export function drawPrism(
+export interface PrismPose {
+  vx: number;
+  vy: number;
+  scale: number;
+  /** 0 = in control, rising = tumbling from a hit. */
+  tumbling: number;
+  tethered: boolean;
+  /** 0..1, decays after each wingbeat. */
+  flapPulse: number;
+  /** 0..1, decays after catching an anchor. */
+  justAttached: number;
+  /** 0..1, decays after letting go. */
+  justReleased: number;
+  light: string;
+  time: number;
+}
+
+// The lean she is drawn at. The tether has to leave her HORN rather than her middle — she
+// is a unicorn projecting a rainbow, and that should be visible — so the engine needs the
+// same rotation to know where the horn tip actually is.
+export function prismLean(vx: number, vy: number, tumbling: number): number {
+  if (tumbling > 0) return tumbling * 14;
+  return Math.max(-0.5, Math.min(0.55, -vy / 1700 + vx / 4200));
+}
+
+export function prismHornTip(pose: PrismPose): { dx: number; dy: number } {
+  const a = prismLean(pose.vx, pose.vy, pose.tumbling);
+  const hx = 29 * pose.scale;
+  const hy = -13 * pose.scale;
+  return {
+    dx: hx * Math.cos(a) - hy * Math.sin(a),
+    dy: hx * Math.sin(a) + hy * Math.cos(a),
+  };
+}
+
+// One leg, as two tapered segments. Four of them, posed per state — tucked while climbing
+// or carried, reaching while gliding, and paddling on each wingbeat, which is the detail
+// that makes her look alive rather than pivoted.
+function leg(
   ctx: CanvasRenderingContext2D,
-  frames: (HTMLImageElement | undefined)[],
-  x: number,
-  y: number,
-  vx: number,
-  vy: number,
-  scale: number,
-  tumbling: number
+  hipX: number,
+  hipY: number,
+  thigh: number,
+  shin: number,
+  len: number
 ): void {
-  const frame = vy > 120 ? 0 : vy < -260 ? 2 : 1;
-  const img = frames[frame];
+  const kx = hipX + Math.cos(thigh) * len;
+  const ky = hipY + Math.sin(thigh) * len;
+  const fx = kx + Math.cos(shin) * len * 0.85;
+  const fy = ky + Math.sin(shin) * len * 0.85;
+  ctx.beginPath();
+  ctx.moveTo(hipX, hipY);
+  ctx.lineTo(kx, ky);
+  ctx.lineWidth = 2.6;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(kx, ky);
+  ctx.lineTo(fx, fy);
+  ctx.lineWidth = 1.9;
+  ctx.stroke();
+  // Hoof: a tiny prism, matching the world's vocabulary
+  ctx.beginPath();
+  ctx.arc(fx, fy, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+export function drawPrism(ctx: CanvasRenderingContext2D, x: number, y: number, pose: PrismPose): void {
+  const { vx, vy, scale, tumbling, tethered, flapPulse, justAttached, justReleased, light, time } = pose;
+
+  // The first pass at this was a faceted wedge and it read as a paper aeroplane, not a
+  // horse. What a horse needs before anything else is an ARCHED NECK and a distinct HEAD;
+  // without those, no amount of styling reads as equine. So the silhouette is built in
+  // proper parts — barrel, neck, head, four long legs, big pegasus wings — and only then
+  // faceted and lit.
+  const climb = Math.max(0, Math.min(1, vy / 620));
+  const dive = Math.max(0, Math.min(1, -vy / 700));
+  const speed = Math.hypot(vx, vy);
+  const beat = Math.sin(time * 15);
+
+  // Wing angle, in canvas degrees: 180 is straight back, 270 is straight up.
+  let wingDeg = 188 + climb * 14 + beat * (10 + climb * 20) + flapPulse * 22;
+  let wingLen = 34 + climb * 4;
+  if (tethered) {
+    wingDeg = 196 + beat * 4; // folded, being carried
+    wingLen = 20;
+  }
+  if (justReleased > 0) {
+    wingDeg += justReleased * 26; // snapped wide on the launch
+    wingLen += justReleased * 8;
+  }
+  if (tumbling > 0) {
+    wingDeg = 150;
+    wingLen = 22;
+  }
+
+  const squashY = 1 - justAttached * 0.14 + justReleased * 0.09;
+  const squashX = 1 + justAttached * 0.12 + justReleased * 0.05;
+  const whip = 1 + Math.min(1.3, speed / 750);
+  const flow = (t: number) => spectrumAt(t - time * 0.4);
+
   ctx.save();
   ctx.translate(x, y);
-  if (tumbling > 0) {
-    ctx.rotate(tumbling * 14);
-    ctx.globalAlpha = 0.6 + 0.4 * Math.abs(Math.sin(tumbling * 30));
-  } else {
-    // Lean into the direction of travel — reads as intent, not just a moving sprite
-    ctx.rotate(Math.max(-0.5, Math.min(0.55, -vy / 1600 + vx / 4000)));
-  }
-  if (img && img.width) {
-    const w = 86 * scale;
-    const h = (w * img.height) / img.width;
-    ctx.drawImage(img, -w / 2, -h / 2, w, h);
-  } else {
-    // Sprite not loaded yet: a lit lozenge rather than nothing
-    ctx.fillStyle = "#fff";
+  ctx.scale(scale, scale);
+  ctx.rotate(prismLean(vx, vy, tumbling));
+  if (tumbling > 0) ctx.globalAlpha = 0.7 + 0.3 * Math.abs(Math.sin(tumbling * 30));
+  ctx.scale(squashX, squashY);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  // ---------- Tail: spectrum, rooted at the croup ----------
+  for (let i = 0; i < 4; i++) {
+    const off = (i - 1.5) * 1.9;
+    const wob = Math.sin(time * 6.5 + i * 0.9) * 2.6 * whip;
+    ctx.strokeStyle = flow(i / 4);
+    ctx.lineWidth = 2.6 - i * 0.25;
     ctx.beginPath();
-    ctx.ellipse(0, 0, 18 * scale, 12 * scale, 0, 0, Math.PI * 2);
+    ctx.moveTo(-15, -1 + off * 0.5);
+    ctx.quadraticCurveTo(-25 * whip, off + wob, (-36 - i * 2.5) * whip, off * 1.5 + wob);
+    ctx.stroke();
+  }
+
+  // ---------- Far wing, behind everything ----------
+  const wingRad = (deg: number) => (deg * Math.PI) / 180;
+  const farA = wingRad(wingDeg - 12);
+  ctx.fillStyle = "rgba(198,214,250,0.55)";
+  ctx.beginPath();
+  ctx.moveTo(0, -6);
+  ctx.lineTo(Math.cos(farA) * wingLen * 0.82, -6 + Math.sin(farA) * wingLen * 0.82);
+  ctx.lineTo(6, -9);
+  ctx.closePath();
+  ctx.fill();
+
+  // ---------- Legs: long, thin, posed. Front pair reaches, rear pair trails ----------
+  ctx.strokeStyle = "rgba(232,239,255,0.96)";
+  ctx.fillStyle = "rgba(232,239,255,0.96)";
+  const paddle = Math.sin(time * 12) * (0.45 + flapPulse * 0.7);
+  const tuck = tethered ? 0.9 : Math.max(climb * 0.85, 1 - dive * 0.95) * 0.75;
+  const legSpec: [number, number, number, number][] = [
+    // hipX, hipY, phase, length
+    [7, 4, 0, 8],
+    [4.5, 4.5, 2.3, 7.6],
+    [-9, 3, 1.2, 8.4],
+    [-12, 2.5, 3.4, 8],
+  ];
+  for (const [hx, hy, ph, len] of legSpec) {
+    const swing = paddle * 0.4 * Math.cos(ph);
+    const thigh = 1.5 - tuck * 1.35 + swing;
+    const shin = thigh + 0.7 + tuck * 1.25 - swing * 0.6;
+    leg(ctx, hx, hy, thigh, shin, len);
+  }
+
+  // ---------- Body: a rounded barrel ----------
+  const bodyPath = () => {
+    ctx.beginPath();
+    ctx.moveTo(11, -3); // chest
+    ctx.quadraticCurveTo(6, -10, -2, -9); // back, behind the withers
+    ctx.quadraticCurveTo(-12, -8, -16, -2); // croup
+    ctx.quadraticCurveTo(-18, 4, -11, 6); // haunch
+    ctx.quadraticCurveTo(-2, 9, 8, 6); // belly
+    ctx.quadraticCurveTo(12, 4, 11, -3); // back to chest
+    ctx.closePath();
+  };
+  const body = ctx.createLinearGradient(0, -10, 0, 9);
+  body.addColorStop(0, "#ffffff");
+  body.addColorStop(0.6, "#f4f7ff");
+  body.addColorStop(1, "#c6d2ef");
+  ctx.fillStyle = body;
+  bodyPath();
+  ctx.fill();
+
+  // ---------- Neck: the arch that makes it read as a horse ----------
+  const neck = ctx.createLinearGradient(4, -6, 22, -20);
+  neck.addColorStop(0, "#f7f9ff");
+  neck.addColorStop(1, "#ffffff");
+  ctx.fillStyle = neck;
+  ctx.beginPath();
+  ctx.moveTo(4, -7);
+  ctx.quadraticCurveTo(13, -13, 17, -21); // top line of the neck, arched
+  ctx.lineTo(24, -19);
+  ctx.quadraticCurveTo(18, -11, 11, -2); // underside
+  ctx.closePath();
+  ctx.fill();
+
+  // ---------- Head: a distinct wedge with a muzzle ----------
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.moveTo(17, -22); // poll
+  ctx.lineTo(29, -17); // bridge of the nose
+  ctx.lineTo(31, -13); // muzzle
+  ctx.lineTo(24, -13); // jaw
+  ctx.quadraticCurveTo(19, -15, 17, -22);
+  ctx.closePath();
+  ctx.fill();
+
+  // Ear
+  ctx.beginPath();
+  ctx.moveTo(18, -22);
+  ctx.lineTo(16.5, -28);
+  ctx.lineTo(21, -23);
+  ctx.closePath();
+  ctx.fill();
+
+  // Shadow facets: underside of the barrel and of the jaw
+  ctx.fillStyle = "rgba(116,136,188,0.3)";
+  ctx.beginPath();
+  ctx.moveTo(11, 0);
+  ctx.quadraticCurveTo(4, 8, -8, 6);
+  ctx.quadraticCurveTo(-16, 4, -16, -1);
+  ctx.quadraticCurveTo(-4, 3, 11, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  // ---------- Mane: short tufts hugging the neck ----------
+  // Long sweeping strands read as a rainbow passing BEHIND her and merged visually with
+  // the tail, so the whole animal looked like it had a rainbow stuck through it. Short
+  // tufts that follow the neck's own curve read as hair.
+  for (let i = 0; i < 6; i++) {
+    const f = i / 5;
+    const wob = Math.sin(time * 9 + i * 1.3) * 1.5;
+    ctx.strokeStyle = flow(0.1 + f * 0.5);
+    ctx.lineWidth = 3.2 - f * 0.7;
+    // Along the neck's top line, from withers up to the poll
+    const sx = 5 + f * 12;
+    const sy = -8 - f * 13;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.quadraticCurveTo(sx - 5, sy - 2.5 + wob, sx - 9 - f * 3, sy + 2.5 + wob);
+    ctx.stroke();
+  }
+
+  // ---------- Rim light along the top line, in the band's own colour ----------
+  ctx.strokeStyle = light;
+  ctx.lineWidth = 1.4;
+  ctx.globalAlpha *= 0.85;
+  ctx.beginPath();
+  ctx.moveTo(-16, -2);
+  ctx.quadraticCurveTo(-8, -9, -2, -9);
+  ctx.quadraticCurveTo(6, -10, 4, -7);
+  ctx.quadraticCurveTo(13, -13, 17, -21);
+  ctx.lineTo(29, -17);
+  ctx.stroke();
+  ctx.globalAlpha = tumbling > 0 ? 0.7 + 0.3 * Math.abs(Math.sin(tumbling * 30)) : 1;
+
+  // ---------- Horn: a prism on the forehead, lit while the rope is out of it ----------
+  const horn = ctx.createLinearGradient(20, -22, 34, -33);
+  horn.addColorStop(0, "#ffffff");
+  horn.addColorStop(1, spectrumAt(time * 0.25));
+  ctx.fillStyle = horn;
+  if (tethered) {
+    ctx.shadowColor = spectrumAt(time * 0.25);
+    ctx.shadowBlur = 14;
+  }
+  ctx.beginPath();
+  ctx.moveTo(19, -23);
+  ctx.lineTo(34, -33);
+  ctx.lineTo(23, -20);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Eye — shuts to a line when she is stunned
+  ctx.strokeStyle = "rgba(38,42,68,0.9)";
+  ctx.fillStyle = "rgba(38,42,68,0.9)";
+  if (tumbling > 0) {
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(21, -18.6);
+    ctx.lineTo(24.4, -17.6);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(22.6, -18.4, 1.15, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  // ---------- Near wing: three layered feather planes. Big wings are what read ----------
+  for (let i = 0; i < 3; i++) {
+    const a = wingRad(wingDeg + i * 13);
+    const len = wingLen - i * 6;
+    const g = ctx.createLinearGradient(2, -7, Math.cos(a) * len, -7 + Math.sin(a) * len);
+    g.addColorStop(0, "#ffffff");
+    g.addColorStop(1, i === 0 ? "rgba(226,236,255,0.9)" : "rgba(206,222,255,0.85)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(2, -6);
+    ctx.lineTo(Math.cos(a) * len, -7 + Math.sin(a) * len);
+    ctx.lineTo(Math.cos(a + 0.3) * len * 0.72, -6 + Math.sin(a + 0.3) * len * 0.72);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+  }
+
   ctx.restore();
+
+  // A ring of light on the launch, drawn unrotated so it stays circular
+  if (justReleased > 0.05) {
+    ctx.save();
+    ctx.globalAlpha = justReleased * 0.5;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, (1 - justReleased) * 50 * scale + 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
