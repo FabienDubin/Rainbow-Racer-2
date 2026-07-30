@@ -96,6 +96,7 @@ export interface MetaState {
   runs: number;
   bestM: number;
   lotteriesPlayed: number;
+  name: string; // for the weekly board
   giftsTaken: number; // gifts actually collected
   sinceGiftOffered: number; // lotteries since one last held a gift
 }
@@ -109,6 +110,7 @@ const EMPTY: MetaState = {
   runs: 0,
   bestM: 0,
   lotteriesPlayed: 0,
+  name: "",
   giftsTaken: 0,
   sinceGiftOffered: 99, // a brand-new player is due one immediately
 };
@@ -197,11 +199,15 @@ const GIFTABLE = ["boost", "talisman", "magnet"];
 // The counter tracks gifts OFFERED, not taken. Seeing one on the table and picking the
 // wrong card is the gamble, and that near-miss is doing real work.
 export function giftChance(state: MetaState): number {
-  if (state.giftsTaken === 0) {
-    if (state.lotteriesPlayed >= 2) return 1; // by the third, certain
-    return state.lotteriesPlayed === 0 ? 0.4 : 0.6;
+  // Coalesced: a save written before these fields existed must still get its first gift
+  const taken = state.giftsTaken ?? 0;
+  const played = state.lotteriesPlayed ?? 0;
+  const since = state.sinceGiftOffered ?? 99;
+  if (taken === 0) {
+    if (played >= 2) return 1; // by the third, certain
+    return played === 0 ? 0.4 : 0.6;
   }
-  if (state.sinceGiftOffered >= 9) return 1; // pity
+  if (since >= 9) return 1; // pity
   return 1 / 7;
 }
 
@@ -291,4 +297,19 @@ export function recordRun(state: MetaState, dust: number, distanceM: number): Me
     dust: state.dust + dust,
     bestM: Math.max(state.bestM, distanceM),
   };
+}
+
+// ---------------------------------------------------------------- scoring
+// One number for the weekly board. Distance leads because it is what the run is ABOUT, with
+// dust and the best chain folded in so a player who only climbs and a player who also
+// collects and chains are not scored identically.
+export function runScore(stats: {
+  altitudeM: number;
+  dust: number;
+  bestChain: number;
+  checkpoints: number;
+}): number {
+  return Math.round(
+    stats.altitudeM * 10 + stats.dust * 4 + stats.bestChain * 12 + stats.checkpoints * 40
+  );
 }

@@ -1,75 +1,88 @@
 <div align="center">
-<img src="./public/img/Logo.png" width="320" alt="Rainbow Racer logo">
 
-# Rainbow Racer V2 — Prism Rush 🦄🌈
+# Rainbow Racer — L'Ascension 🦄🌈
 
-**Fly. Graze. Combo. Beat your ghost.**
+**Accroche ton arc-en-ciel. Balance-toi. Lâche au bon moment.**
 
-A fast arcade flier for the browser — the full-power sequel to my first-ever
-bootcamp game, rebuilt with Next.js, TypeScript and a custom Canvas engine.
+Un jeu d'ascension pour navigateur, pensé pour le téléphone. Refonte complète de mon
+tout premier projet de bootcamp.
 
 </div>
 
-## Play
+## Jouer
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000, type your name, hit **JOUER**.
+Puis http://localhost:3000. Sur téléphone, ajoute-le à l'écran d'accueil : c'est une PWA
+installable, jouable en plein écran et hors-ligne après le premier chargement.
 
-## Controls
-
-| Input | Action |
+| Route | |
 |---|---|
-| `Space` (tap) | Flap wings |
-| `Space` (hold) | Glide — slow fall, thread the needles |
-| `Shift` | Dash — brief invincibility, plow through clouds |
-| `B` | Cacalicorne Bomb 💩 — wipes every cloud on screen |
-| `Esc` / `P` | Pause |
-| Touch | Tap = flap · hold = glide · double-tap = dash |
+| `/` | le jeu |
+| `/proto/prism` | planche de personnage : Prism dans chacun de ses états |
+| `/v2` | la V2 horizontale, gardée comme point de comparaison |
 
-## Game mechanics
+## Le verbe
 
-- **Combo & multiplier** — every pickup raises your combo; every 6 combo = +1× score
-  multiplier (up to ×8). Getting hit resets it. Risk stays interesting forever.
-- **Near-miss bonus** — grazing a cloud without touching it pays points. Skill is rewarded.
-- **Rainbow Rush** — catch a rainbow: 7s of invincibility, gem magnet, ×2 score,
-  and the sky goes full disco.
-- **Cacalicorne Bomb** — collect 25 gems to charge the legendary unicorn poop.
-- **Living world** — biomes shift with distance (Crystal Cloudscape → Sunset Drift →
-  Neon Abyss → Stardust Sanctuary), each unlocking new enemy behaviours:
-  sine-weaving clouds, altitude-homing clouds, cloud-wall gates.
-- **Ghost racing** — your best run is recorded and replayed as a translucent ghost.
-  Beat yourself first, then beat the world.
-- **Global leaderboard** — one shared top-100, name required, trash talk optional.
+Un seul geste, au pouce : **tu appuies, tu tiens, tu relâches.**
 
-## Architecture
+Appuyer près d'un prisme y accroche ton arc-en-ciel. Tenir enroule le treuil et lance le
+pendule. Lâcher te catapulte le long de la tangente — et *le moment* du lâcher décide de
+tout. Les deux repères `⊥` marquent l'endroit où ta vitesse pointe droit vers le haut.
 
-```
-game/        Canvas engine — zero React inside the loop
-  engine.ts            main loop, physics, collisions, scoring, HUD
-  spawner.system.ts    pattern-based procedural waves, difficulty-scaled
-  entities.ts          clouds / gems / stars / rainbows / hearts
-  particles.system.ts  pooled particles (no GC churn)
-  background.system.ts parallax + biome color blending
-  ghost.ts             best-run recording & replay
-  input.manager.ts     keyboard + touch, edge/level triggered
-  audio.manager.ts     overlapping SFX + music channel
-  constants.ts         every tuning value in one file
-components/GameShell.tsx   React shell: menu / HUD overlays / game over
-app/api/leaderboard/route.ts  leaderboard API (file store or Supabase)
-```
+Loin de toute ancre, appuyer bat des ailes. C'est le filet de sauvetage, pas le plat
+principal.
 
-The engine runs on `requestAnimationFrame` with delta-time physics, auto-pauses on
-tab blur, and renders to a fixed 1280×720 canvas scaled with CSS.
+**Le treuil et la poussée sont payés par la qualité de ton lâcher précédent.** Le skill se
+compose, la maladresse s'effondre. C'est le cœur du système.
 
-## Global leaderboard (production)
+**Plonger paie.** Attrape une ancre *sous* toi, tombe au-delà, et la corde fouette ta
+vitesse de chute dans le balancier — jusqu'à +240 % de hauteur de lancer.
 
-Out of the box scores are stored in `.data/leaderboard.json` — great locally, but
-ephemeral on serverless hosts. For a real shared leaderboard, create a free
-[Supabase](https://supabase.com) project and run:
+## Ce qui te met en danger
+
+Rien ne tue à part **perdre de l'altitude**. Le Grondement monte depuis le bas et ne
+s'arrête jamais ; tout le reste te coûte du tempo, et le tempo le laisse gagner.
+
+- **Paliers** — de plus en plus espacés. Les franchir repousse l'orage.
+- **Éclairs** — le nuage s'arme à ton approche, clignote, puis sa ligne d'altitude devient
+  mortelle. Un danger qu'on lit.
+- **Courants** — colonnes verticales. Une ascendance qu'on cherche, un rabattant qu'on
+  évite.
+- **Pilleurs** — des pies qui volent ta poussière et brisent ta chaîne. Elles ne te
+  blessent pas : elles te prennent ce que tu as amassé.
+
+## La boucle longue
+
+La **poussière** ne se perd jamais à la mort. Les points suivent la route ; les
+**guirlandes** valent double mais sont hors ligne — s'accrocher *de loin* garde la corde
+longue et les balaie.
+
+Chaque partie finit sur une **loterie** : trois cartes, tu en choisis une, les trois se
+révèlent. Le premier cadeau tombe dans tes trois premières parties, puis environ une fois
+sur sept.
+
+La **boutique** vend trois natures de choses : du permanent qui enlève de la friction, du
+consommable pour le prochain run, et des **modes** qui changent la sensation du jeu pendant
+trois parties.
+
+## Le son
+
+Entièrement synthétisé en Web Audio, aucun fichier. La partition est **en couches, et les
+couches arrivent avec ta chaîne** : nappe seule quand tu galères, puis basse, arpège,
+batterie, et un lead quand tu enchaînes bien. Ta performance devient audible.
+
+## Le classement
+
+Hebdomadaire, remis à zéro chaque lundi — un classement de tous les temps est mort à
+l'arrivée pour un nouveau joueur. Une ligne par personne : son meilleur de la semaine.
+
+Par défaut les scores vont dans `.data/leaderboard.json`, ce qui suffit en local mais
+s'efface sur un hébergement serverless. Pour un vrai classement partagé, crée un projet
+[Supabase](https://supabase.com) gratuit et exécute :
 
 ```sql
 create table scores (
@@ -82,10 +95,40 @@ create table scores (
 );
 ```
 
-Then set the env vars from `.env.example` (locally and on Vercel) — the API
-switches backends automatically. Deploy with `vercel`.
+Puis renseigne les variables de `.env.example` — l'API change de backend toute seule.
 
-## Credits
+## Architecture
 
-Art & sounds from Rainbow Racer V1 (Ironhack bootcamp, module 1) — designed for
-my unicorn-obsessed daughter. V2 engine built with Claude.
+```
+game/v3/
+  proto.engine.ts     boucle, physique, collisions, génération
+  proto.constants.ts  chaque valeur de réglage, en un seul fichier
+  meta.ts             poussière, boutique, loterie, score
+  audio.ts            musique en couches + SFX + haptique, synthétisés
+  art/palette.ts      les sept paliers d'altitude
+  art/draw.ts         tout le rendu, en fonctions pures
+  __tests__/          sondes headless — voir son README
+components/v3/        coquille React : menus, loterie, boutique, planche perso
+app/api/leaderboard/  API du classement (fichier ou Supabase)
+```
+
+Le moteur est en `requestAnimationFrame` avec une physique en delta-time, se met en pause
+quand l'onglet perd le focus, et dessine dans un buffer dont la **hauteur logique suit le
+ratio de l'écran** — sur un téléphone plus allongé on voit plus de ciel, jamais une image
+étirée.
+
+## Les sondes
+
+`game/v3/__tests__` contient une douzaine de sondes headless qui pilotent le moteur sans
+navigateur. Elles ne vérifient pas que le code tourne : elles vérifient que **le jeu
+récompense le skill**. Elles ont attrapé, entre autres, un spam d'entrée qui battait le jeu
+habile, un pendule sans lancer, une punition d'éclair annulée une ligne plus loin, une
+vitesse qui composait à l'infini, une loterie qui distribuait dans l'ordre croissant, et un
+danger qui augmentait mesurablement le score du joueur négligent.
+
+Voir [`game/v3/__tests__/README.md`](game/v3/__tests__/README.md).
+
+## Crédits
+
+Conçu avec Fab, dont la fille — perpétuellement déguisée en licorne — est la raison pour
+laquelle Prism est une gamine en pyjama-licorne plutôt qu'un cheval ailé.

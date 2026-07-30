@@ -24,7 +24,7 @@ export async function submitScore(entry: {
   score: number;
   distance: number;
   maxCombo: number;
-}): Promise<{ rank: number | null; entries: LeaderboardEntry[] } | null> {
+}): Promise<{ rank: number | null; entries: LeaderboardEntry[]; week?: string } | null> {
   try {
     const res = await fetch("/api/leaderboard", {
       method: "POST",
@@ -33,7 +33,7 @@ export async function submitScore(entry: {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return { rank: data.rank ?? null, entries: data.entries ?? [] };
+    return { rank: data.rank ?? null, entries: data.entries ?? [], week: data.week };
   } catch {
     return null;
   }

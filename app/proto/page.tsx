@@ -1,12 +1,6 @@
-import type { Metadata } from "next";
-import ProtoShell from "@/components/v3/ProtoShell";
-import "./proto.css";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Rainbow Racer — L'Ascension",
-  description: "Prototype jouable de Rainbow Racer V3 : l'Arc, les paliers, les éclairs.",
-};
-
-export default function ProtoPage() {
-  return <ProtoShell />;
+// The prototype used to live here; the game is at the root now. Old links still work.
+export default function ProtoRedirect() {
+  redirect("/");
 }

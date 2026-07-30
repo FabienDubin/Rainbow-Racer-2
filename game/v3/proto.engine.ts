@@ -14,7 +14,7 @@
 // World Y points UP. Screen conversion happens only at draw time.
 
 import { RunConfig } from "./meta";
-import { audio } from "./audio";
+import { audio, haptic } from "./audio";
 import { skyAt, SkyState } from "./art/palette";
 import {
   Camera, drawAnchor, drawDustMote, drawGarlandGem, drawGarlandThread, drawParallax,
@@ -426,6 +426,7 @@ export class ProtoEngine {
       this.stormY -= CHECKPOINT_PUSHBACK;
       this.checkpointToast = 2.2;
       audio.palier();
+      haptic([12, 60, 12]);
     }
 
     // ---- Courants: vertical, so entering one is a choice rather than a perturbation
@@ -461,6 +462,7 @@ export class ProtoEngine {
         r.cooldown = RAIDER_COOLDOWN;
         this.shake = Math.max(this.shake, 6);
         audio.steal();
+        haptic(30);
         this.pickups.push({ x: r.x, y: r.y, text: `-${taken}`, life: 0.8, big: true });
       }
     }
@@ -528,6 +530,7 @@ export class ProtoEngine {
     this.ropeLen = Math.max(ROPE_MIN, Math.hypot(a.x - this.px, a.y - this.py));
     this.attaches++;
     audio.grab();
+    haptic(8);
     if (a.skip) this.skipsTaken++;
     this.reelLeft = WINCH_BUDGET * this.winchCharge;
     this.sweptAngle = 0;
@@ -738,6 +741,7 @@ export class ProtoEngine {
         this.shake = HIT_SHAKE;
         this.hitStop = HIT_STOP;
         audio.hit();
+        haptic([26, 40, 26]);
         if (this.anchor) this.release(true, false);
         // Order matters: the punishment lands after the detach, or the detach undoes it.
         this.chain = 0;

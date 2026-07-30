@@ -13,6 +13,11 @@ import { ProtoEngine, ProtoStats } from "@/game/v3/proto.engine";
 import ShopIcon from "./ShopIcon";
 import { audio } from "@/game/v3/audio";
 import {
+  fetchLeaderboard,
+  LeaderboardEntry,
+  submitScore,
+} from "@/lib/leaderboard.client";
+import {
   applyCard,
   buy,
   byId,
@@ -23,6 +28,7 @@ import {
   MetaState,
   recordRun,
   resetMeta,
+  runScore,
   rollLottery,
   saveMeta,
   startRun,
@@ -41,13 +47,24 @@ export default function ProtoShell() {
   const [cards, setCards] = useState<LotteryCard[]>([]);
   const [picked, setPicked] = useState<number | null>(null);
   const [muted, setMuted] = useState(false);
+  const [board, setBoard] = useState<LeaderboardEntry[]>([]);
+  const [rank, setRank] = useState<number | null>(null);
+  const [shareLabel, setShareLabel] = useState("Partager");
+  const [nameDraft, setNameDraft] = useState("");
 
   useEffect(() => {
     audio.init();
     setMuted(audio.muted);
   }, []);
 
-  useEffect(() => setMeta(loadMeta()), []);
+  useEffect(() => {
+    const m = loadMeta();
+    setMeta(m);
+    setNameDraft(m.name);
+  }, []);
+  useEffect(() => {
+    fetchLeaderboard().then(setBoard);
+  }, []);
   useEffect(() => () => engineRef.current?.destroy(), []);
 
   const persist = useCallback((next: MetaState) => {
@@ -66,6 +83,22 @@ export default function ProtoShell() {
       setCards(rollLottery(s.dust, banked));
       setPicked(null);
       setScreen("lottery");
+      setRank(null);
+
+      // Weekly board: only submit when they have chosen a name
+      const score = runScore(s);
+      if (banked.name && score > 0) {
+        submitScore({
+          name: banked.name,
+          score,
+          distance: s.altitudeM,
+          maxCombo: s.bestChain,
+        }).then((res) => {
+          if (!res) return;
+          setRank(res.rank);
+          setBoard(res.entries);
+        });
+      }
     },
     [persist]
   );
@@ -205,13 +238,42 @@ export default function ProtoShell() {
                     {meta.modeRunsLeft > 1 ? "s" : ""}
                   </p>
                 )}
-                <button className="proto-btn" onClick={play}>
+                <input
+                  className="proto-name"
+                  type="text"
+                  maxLength={16}
+                  placeholder="ton pseudo pour le classement"
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onBlur={() => persist({ ...loadMeta(), name: nameDraft.trim() })}
+                />
+                <button
+                  className="proto-btn"
+                  onClick={() => {
+                    persist({ ...loadMeta(), name: nameDraft.trim() });
+                    play();
+                  }}
+                >
                   Commencer
                 </button>
                 {meta.dust > 0 && (
                   <button className="proto-btn-ghost" onClick={() => setScreen("shop")}>
                     Boutique
                   </button>
+                )}
+                {board.length > 0 && (
+                  <div className="proto-board">
+                    <h4>Classement de la semaine</h4>
+                    <ol>
+                      {board.slice(0, 5).map((e, i) => (
+                        <li key={i} className={e.name === meta.name ? "me" : ""}>
+                          <span className="rk">{i + 1}</span>
+                          <span className="nm">{e.name}</span>
+                          <span className="sc">{e.score.toLocaleString("fr-FR")}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
                 )}
               </>
             )}
@@ -269,6 +331,10 @@ export default function ProtoShell() {
                   ))}
                 </div>
 
+                {rank !== null && rank > 0 && (
+                  <p className="proto-rank">#{rank} cette semaine</p>
+                )}
+
                 {picked !== null && (
                   <div className="proto-actions">
                     <button className="proto-btn" onClick={play}>
@@ -276,6 +342,28 @@ export default function ProtoShell() {
                     </button>
                     <button className="proto-btn-ghost" onClick={() => setScreen("shop")}>
                       Boutique · ✦ {meta.dust}
+                    </button>
+                    <button
+                      className="proto-btn-ghost"
+                      onClick={async () => {
+                        const text =
+                          `🦄 ${stats.altitudeM} m dans Rainbow Racer` +
+                          (rank ? ` — #${rank} cette semaine` : "") +
+                          ". Tu me bats ? 🌈";
+                        try {
+                          if (navigator.share) {
+                            await navigator.share({ title: "Rainbow Racer", text, url: location.href });
+                          } else {
+                            await navigator.clipboard.writeText(`${text} ${location.href}`);
+                            setShareLabel("Copié");
+                            setTimeout(() => setShareLabel("Partager"), 1800);
+                          }
+                        } catch {
+                          /* share sheet dismissed */
+                        }
+                      }}
+                    >
+                      {shareLabel}
                     </button>
                   </div>
                 )}

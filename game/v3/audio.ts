@@ -402,3 +402,16 @@ export class GameAudio {
 }
 
 export const audio = new GameAudio();
+
+// ---------------------------------------------------------------- haptics
+// On a phone the thumb carries half the game feel, and a vibration lands even when the
+// player has the sound off. Silently absent on desktop and on iOS Safari.
+export function haptic(pattern: number | number[]): void {
+  if (typeof navigator === "undefined") return;
+  const nav = navigator as Navigator & { vibrate?: (p: number | number[]) => boolean };
+  try {
+    nav.vibrate?.(pattern);
+  } catch {
+    /* not supported — nothing to do */
+  }
+}

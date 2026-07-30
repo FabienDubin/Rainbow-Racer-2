@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import PrismSheet from "@/components/v3/PrismSheet";
-import "../proto.css";
+import "../../proto.css";
 
 export const metadata: Metadata = {
   title: "Prism — planche de personnage",

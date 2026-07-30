@@ -16,6 +16,20 @@ export interface ScoreEntry {
   createdAt: string;
 }
 
+// The board resets every Monday. An all-time board is dead on arrival for a newcomer: they
+// see a number they will never reach, understand they cannot compete, and leave. A weekly
+// reset gives everybody a shot at being first THIS WEEK, which is the difference between a
+// decorative table and a reason to come back.
+export function weekKey(d = new Date()): string {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  // ISO week: Thursday of the current week determines the year and week number
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((t.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${t.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
 const MAX_ENTRIES = 100;
 const MAX_PLAUSIBLE_SCORE = 1_000_000; // sanity clamp against trivial cheating
 const FILE_PATH = path.join(process.cwd(), ".data", "leaderboard.json");
@@ -28,7 +42,18 @@ const useSupabase = Boolean(SUPABASE_URL && SUPABASE_KEY && !SUPABASE_URL.includ
 async function fileRead(): Promise<ScoreEntry[]> {
   try {
     const raw = await fs.readFile(FILE_PATH, "utf8");
-    return JSON.parse(raw) as ScoreEntry[];
+    const all = JSON.parse(raw) as ScoreEntry[];
+    // Filter rather than delete, so history survives a reset
+    const week = weekKey();
+    return all.filter((e) => weekKey(new Date(e.createdAt)) === week);
+  } catch {
+    return [];
+  }
+}
+
+async function fileReadAll(): Promise<ScoreEntry[]> {
+  try {
+    return JSON.parse(await fs.readFile(FILE_PATH, "utf8")) as ScoreEntry[];
   } catch {
     return [];
   }
@@ -44,8 +69,13 @@ async function fileWrite(entries: ScoreEntry[]): Promise<void> {
 //   name text not null, score int not null, distance int not null,
 //   max_combo int not null, created_at timestamptz default now());
 async function supabaseRead(): Promise<ScoreEntry[]> {
+  // Only this week's rows; the reset is a filter, not a delete
+  const monday = new Date();
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() || 7) - 1));
+  monday.setUTCHours(0, 0, 0, 0);
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/scores?select=name,score,distance,max_combo,created_at&order=score.desc&limit=${MAX_ENTRIES}`,
+    `${SUPABASE_URL}/rest/v1/scores?select=name,score,distance,max_combo,created_at` +
+      `&created_at=gte.${monday.toISOString()}&order=score.desc&limit=500`,
     { headers: { apikey: SUPABASE_KEY!, Authorization: `Bearer ${SUPABASE_KEY}` }, cache: "no-store" }
   );
   if (!res.ok) throw new Error(`Supabase read failed: ${res.status}`);
@@ -75,8 +105,19 @@ async function supabaseInsert(entry: ScoreEntry): Promise<void> {
 // ---------------- Handlers ----------------
 export async function GET(): Promise<NextResponse> {
   try {
-    const entries = useSupabase ? await supabaseRead() : await fileRead();
-    return NextResponse.json({ entries: entries.slice(0, MAX_ENTRIES), backend: useSupabase ? "supabase" : "file" });
+    const raw = useSupabase ? await supabaseRead() : await fileRead();
+    // One row per player: their best of the week
+    const best = new Map<string, ScoreEntry>();
+    for (const e of raw) {
+      const prev = best.get(e.name);
+      if (!prev || e.score > prev.score) best.set(e.name, e);
+    }
+    const entries = [...best.values()].sort((a, b) => b.score - a.score).slice(0, MAX_ENTRIES);
+    return NextResponse.json({
+      entries,
+      week: weekKey(),
+      backend: useSupabase ? "supabase" : "file",
+    });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ entries: [], error: "leaderboard_unavailable" }, { status: 500 });
@@ -105,18 +146,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (useSupabase) {
       await supabaseInsert(entry);
-      const entries = await supabaseRead();
-      const rank = entries.findIndex((e) => e.score <= entry.score) + 1 || entries.length;
-      return NextResponse.json({ ok: true, rank, entries });
+      const rows = await supabaseRead();
+      const best = new Map<string, ScoreEntry>();
+      for (const e of rows) {
+        const prev = best.get(e.name);
+        if (!prev || e.score > prev.score) best.set(e.name, e);
+      }
+      const entries = [...best.values()].sort((a, b) => b.score - a.score).slice(0, MAX_ENTRIES);
+      const rank = entries.findIndex((e) => e.name === entry.name) + 1;
+      return NextResponse.json({ ok: true, rank: rank || null, week: weekKey(), entries });
     }
 
-    const entries = await fileRead();
-    entries.push(entry);
-    entries.sort((a, b) => b.score - a.score);
-    const trimmed = entries.slice(0, MAX_ENTRIES);
-    await fileWrite(trimmed);
-    const rank = trimmed.findIndex((e) => e === entry) + 1;
-    return NextResponse.json({ ok: true, rank: rank || null, entries: trimmed });
+    const all = await fileReadAll();
+    all.push(entry);
+    // Keep only one best score per name per week, so the board reads as people not attempts
+    const week = weekKey();
+    const thisWeek = all.filter((e) => weekKey(new Date(e.createdAt)) === week);
+    const best = new Map<string, ScoreEntry>();
+    for (const e of thisWeek) {
+      const prev = best.get(e.name);
+      if (!prev || e.score > prev.score) best.set(e.name, e);
+    }
+    const board = [...best.values()].sort((a, b) => b.score - a.score).slice(0, MAX_ENTRIES);
+    await fileWrite([...all.filter((e) => weekKey(new Date(e.createdAt)) !== week), ...thisWeek]);
+    // Rank by NAME, not by this attempt's score: a run that fails to beat your own best
+    // should still tell you where your best sits, rather than reporting no rank at all.
+    const rank = board.findIndex((e) => e.name === entry.name) + 1;
+    return NextResponse.json({ ok: true, rank: rank || null, week, entries: board });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "submit_failed" }, { status: 500 });

@@ -2,7 +2,8 @@
 // it is worth asserting rather than clicking through 20 runs by hand.
 const M = require("./meta");
 
-let s = { dust: 0, permanents: [], consumables: [], mode: null, modeRunsLeft: 0, runs: 0, bestM: 0, lotteriesPlayed: 0 };
+let s = { dust: 0, permanents: [], consumables: [], mode: null, modeRunsLeft: 0, runs: 0, bestM: 0,
+          lotteriesPlayed: 0, name: '', giftsTaken: 0, sinceGiftOffered: 99 };
 const show = (label) =>
   console.log(
     `${label.padEnd(34)} ✦${String(s.dust).padStart(4)}  perm[${s.permanents.join(",")}]` +
@@ -32,10 +33,10 @@ show("après 4 runs");
 
 // Lottery: floor plus a share, and the first one always gifts
 const fresh = { ...s, lotteriesPlayed: 0 };
-const first = M.rollLottery(100, fresh);
-const later = M.rollLottery(100, { ...s, lotteriesPlayed: 9 });
+const first = M.rollLottery(100, { ...fresh, giftsTaken: 0, sinceGiftOffered: 99 });
+const later = M.rollLottery(100, { ...s, lotteriesPlayed: 9, giftsTaken: 1, sinceGiftOffered: 1 });
 console.log(`\nloterie 1re fois : ${first.map(c => c.dust + (c.gift ? " +" + c.gift : "")).join(" | ")}`);
 console.log(`cadeau garanti au 1er run : ${first.some(c => c.gift) ? "oui" : "NON — à corriger"}`);
 console.log(`loterie plus tard : ${later.map(c => c.dust + (c.gift ? " +" + c.gift : "")).join(" | ")}`);
-const zero = M.rollLottery(0, { ...s, lotteriesPlayed: 5 });
+const zero = M.rollLottery(0, { ...s, lotteriesPlayed: 5, giftsTaken: 1, sinceGiftOffered: 1 });
 console.log(`run catastrophique (0 poussière) rapporte quand même : ${zero.map(c => c.dust).join(", ")}`);
