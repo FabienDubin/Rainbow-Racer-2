@@ -118,6 +118,10 @@ export const DEATH_MARGIN = 120; // px below the view before the run ends
 // ---- World generation ----
 export const ROW_SPACING = 195; // vertical gap between anchor rows
 export const ROW_MARGIN_X = 70;
+// The corridor is wider than the view: you fly off one side, are genuinely gone for a
+// beat, then come back in on the other. A plain edge-to-edge wrap teleports you
+// instantly and you are never actually absent — the brief disappearance is the point.
+export const WRAP_MARGIN = 150; // px of off-screen space on each side
 export const PX_PER_METER = 30;
 
 // ---- Launch ----

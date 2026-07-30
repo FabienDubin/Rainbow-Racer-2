@@ -75,9 +75,12 @@ const GRAB = {
 
 const RELEASE = {
   // Lets go when the swing is aimed near-vertical and fast: converts timing to height.
-  aimed: (e) => e.sweptAngle > C.MIN_SWING_ANGLE && e.vy > 340 && offVertical(e) < 30,
-  // Lets go on any decent upward motion, without aiming.
-  rising: (e) => e.sweptAngle > C.MIN_SWING_ANGLE && e.vy > 250,
+  // Thresholds re-derived by sweep (see policy.js) after the physics changed scale —
+  // the old vy>340/<30 pair sat on the edge of the good zone and made "expert" play
+  // look worse than careless play, which was a stale harness, not a broken game.
+  aimed: (e) => e.sweptAngle > C.MIN_SWING_ANGLE && e.vy > 350 && offVertical(e) < 35,
+  // Lets go on any decent upward motion, without aiming at all.
+  rising: (e) => e.sweptAngle > C.MIN_SWING_ANGLE && e.vy > 200,
   // Lets go the instant it is falling — the winch does all the work.
   falling: (e) => e.vy < -250,
   // Never chooses: rides every arc to the automatic release.

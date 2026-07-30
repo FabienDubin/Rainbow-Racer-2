@@ -36,6 +36,13 @@ node /tmp/proto-build/bot.js
 Each of these found a distinct design flaw that playtesting by feel would have
 hidden behind "it's a bit weird". Keep them running as the physics changes.
 
+- **policy.js** — re-derives the best release policy by sweep. Run it after any change
+  to the speed scale: hand-tuned bot thresholds go stale silently, and a stale "expert"
+  bot makes skilled play look worse than careless play, which reads as a broken game
+  when the harness is what broke.
+- **speedcap.js** — checks speed is not compounding. The release kick is multiplicative,
+  so it needs a real governor; the screen walls used to be one by accident.
+
 A note on what the numbers can and cannot say: the bots are crude and do not chain
 momentum the way a person does, so treat the absolute altitudes as a floor. What they
 are genuinely good at is catching *ordering* bugs — a degenerate strategy quietly

@@ -17,7 +17,7 @@ import {
   CAM_SPEED_LOOKAHEAD, MAX_ATTACH_TIME_DIVE, MAX_ATTACH_TIME_LIFT, MAX_SWING_SPEED,
   MAX_SWING_TANGENTIAL, MIN_SWING_ANGLE, PX_PER_METER,
   GRAB_COOLDOWN, REEL_SPEED, REF_RELEASE_SPEED, REGRAB_LOCKOUT, ROPE_MIN, ROW_MARGIN_X,
-  ROW_SPACING,
+  ROW_SPACING, WRAP_MARGIN,
   START_VY, STORM_ACCEL, STORM_SPEED_BASE, STORM_START_BELOW,
   STREAK_COUNT, STREAK_MAX_SPEED, STREAK_MIN_SPEED, SWING_PUMP, SWING_RECOVERY_DRIVE,
   SWING_STALL_FLOOR, RELEASE_KICK, TETHER_RANGE, VIEW_H, VIEW_W, WHIP_RECOVERY,
@@ -61,6 +61,7 @@ export class ProtoEngine {
   private lastAngle = 0;
   private wasTaut = false; // was the rope taut last frame — gates the whip to the catch
   private whipFlash = 0; // visual feedback on a strong catch
+  private whipCount = 0; // diagnostic: catches per run. Repeated whips = free energy.
   private slips = 0; // releases that never earned a swing
   private lastReleased: Anchor | null = null;
   private regrabTimer = 0;
@@ -209,9 +210,21 @@ export class ProtoEngine {
 
     if (this.anchor) this.solveRope(dt);
 
-    // Keep play inside the vertical corridor — walls are soft bumpers, not death
-    if (this.px < 16) { this.px = 16; this.vx = Math.abs(this.vx) * 0.5; }
-    if (this.px > VIEW_W - 16) { this.px = VIEW_W - 16; this.vx = -Math.abs(this.vx) * 0.5; }
+    // Leave one side, come back on the other. Bouncing off the walls halved your
+    // horizontal speed and flipped its direction — a momentum tax, in a game whose
+    // whole point is now momentum. Wrapping keeps the velocity vector untouched, and
+    // it turns a narrow portrait corridor into a loop you can route around.
+    this.px = this.wrapX(this.px);
+
+    // Global speed governor. The release kick is multiplicative, and until the walls
+    // were removed their 50% damping was quietly capping it — so speed compounded the
+    // moment wrapping went in (measured 1667px/s against a 1400 ceiling, still rising).
+    // A cap belongs here, explicitly, not as a side effect of the level geometry.
+    const speed = Math.hypot(this.vx, this.vy);
+    if (speed > MAX_SWING_SPEED) {
+      this.vx = (this.vx / speed) * MAX_SWING_SPEED;
+      this.vy = (this.vy / speed) * MAX_SWING_SPEED;
+    }
 
     // ---- Chain: broken by losing real altitude below your peak
     if (this.py > this.peakY) this.peakY = this.py;
@@ -236,6 +249,27 @@ export class ProtoEngine {
     if (this.screenY(this.py) > this.viewH + DEATH_MARGIN) this.end();
   }
 
+  // Horizontal distance the short way round the cylinder. Everything that reasons
+  // about "how far across" must use this, or the seam becomes a wall again.
+  private get wrapW(): number {
+    return VIEW_W + WRAP_MARGIN * 2;
+  }
+
+  private wrapX(x: number): number {
+    const w = this.wrapW;
+    if (x < -WRAP_MARGIN) return x + w;
+    if (x >= VIEW_W + WRAP_MARGIN) return x - w;
+    return x;
+  }
+
+  private wrapDx(from: number, to: number): number {
+    const w = this.wrapW;
+    let dx = to - from;
+    if (dx > w / 2) dx -= w;
+    else if (dx < -w / 2) dx += w;
+    return dx;
+  }
+
   // Pick the best anchor in range: nearest, but strongly biased toward ones above us
   private pickAnchor(): Anchor | null {
     if (this.grabCooldown > 0) return null; // the arc has to reform
@@ -245,7 +279,7 @@ export class ProtoEngine {
       if (a === this.anchor) continue;
       // Don't let the player re-grab the rung they just left and stall out
       if (a === this.lastReleased && this.regrabTimer > 0) continue;
-      const dx = a.x - this.px;
+      const dx = this.wrapDx(this.px, a.x);
       const dy = a.y - this.py;
       const dist = Math.hypot(dx, dy);
       if (dist > TETHER_RANGE || dist < 30) continue;
@@ -264,7 +298,10 @@ export class ProtoEngine {
   private attach(a: Anchor): void {
     this.anchor = a;
     a.used = true;
-    this.ropeLen = Math.max(ROPE_MIN, Math.hypot(a.x - this.px, a.y - this.py));
+    this.ropeLen = Math.max(
+      ROPE_MIN,
+      Math.hypot(this.wrapDx(this.px, a.x), a.y - this.py)
+    );
     this.attaches++;
     if (a.skip) this.skipsTaken++;
     this.reelLeft = WINCH_BUDGET * this.winchCharge;
@@ -278,8 +315,10 @@ export class ProtoEngine {
     this.lastAngle = Math.atan2(this.py - a.y, this.px - a.x);
     this.flashAttach = 1;
     // Drive the pendulum the way we're already travelling; fall back to our side
-    const nx = (this.px - a.x) / Math.max(1, Math.hypot(a.x - this.px, a.y - this.py));
-    const ny = (this.py - a.y) / Math.max(1, Math.hypot(a.x - this.px, a.y - this.py));
+    const adx = this.wrapDx(a.x, this.px);
+    const adist = Math.max(1, Math.hypot(adx, this.py - a.y));
+    const nx = adx / adist;
+    const ny = (this.py - a.y) / adist;
     const tangential = this.vx * -ny + this.vy * nx;
     this.swingSign = Math.sign(tangential) || Math.sign(this.px - a.x) || 1;
   }
@@ -345,7 +384,7 @@ export class ProtoEngine {
       this.reelLeft -= pull;
     }
 
-    const dx = this.px - a.x;
+    const dx = this.wrapDx(a.x, this.px);
     const dy = this.py - a.y;
     const dist = Math.hypot(dx, dy);
     if (dist < 0.001) return;
@@ -359,6 +398,7 @@ export class ProtoEngine {
     const ny = dy / dist;
     this.px = a.x + nx * this.ropeLen;
     this.py = a.y + ny * this.ropeLen;
+    this.px = this.wrapX(this.px);
 
     // The rope can pull but never push, so outward radial velocity has to go.
     // Zeroing it outright threw away everything you earned by diving: grab a ring
@@ -381,6 +421,7 @@ export class ProtoEngine {
         this.vy += nx * tSign * radial * WHIP_RECOVERY;
         this.swingSign = tSign; // the dive decides which way we swing
         this.whipFlash = Math.min(1, radial / 700);
+        this.whipCount++;
       }
     }
     this.wasTaut = true;
@@ -530,9 +571,15 @@ export class ProtoEngine {
       }
     }
 
-    // Rope + the swing circle, so the arc you're on is legible
+    // Rope + the swing circle, so the arc you're on is legible. Everything here is
+    // drawn three times — at x, x-W and x+W — so a swing that crosses the seam reads
+    // as one continuous arc instead of snapping across the screen.
     if (this.anchor) {
       const ay = this.screenY(this.anchor.y);
+      const seam = [-this.wrapW, 0, this.wrapW];
+      for (const off of seam) {
+      ctx.save();
+      ctx.translate(off, 0);
       ctx.strokeStyle = "rgba(255,255,255,0.18)";
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -560,23 +607,33 @@ export class ProtoEngine {
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(this.anchor.x, ay);
-      ctx.lineTo(this.px, this.screenY(this.py));
+      // Follow the short way round, so the rope never stretches across the whole view
+      ctx.lineTo(
+        this.anchor.x + this.wrapDx(this.anchor.x, this.px),
+        this.screenY(this.py)
+      );
       ctx.stroke();
+      ctx.restore();
+      }
     }
 
-    // Velocity vector — the single most useful debug read for judging release timing
+    // Player and velocity vector. Deliberately NOT mirrored across the seam: flying
+    // off the side and vanishing for a beat before reappearing is the fun of it.
     const psy = this.screenY(this.py);
-    ctx.strokeStyle = this.flashRelease > 0 ? "#fff" : "rgba(255,255,255,0.4)";
-    ctx.lineWidth = this.flashRelease > 0 ? 3 : 1.5;
-    ctx.beginPath();
-    ctx.moveTo(this.px, psy);
-    ctx.lineTo(this.px + this.vx * 0.12, psy - this.vy * 0.12);
-    ctx.stroke();
-
-    // Player
     const size = 20 + this.flashAttach * 5;
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(this.px - size / 2, psy - size / 2, size, size);
+
+    for (const off of [0]) {
+      const x = this.px + off;
+      ctx.strokeStyle = this.flashRelease > 0 ? "#fff" : "rgba(255,255,255,0.4)";
+      ctx.lineWidth = this.flashRelease > 0 ? 3 : 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, psy);
+      ctx.lineTo(x + this.vx * 0.12, psy - this.vy * 0.12);
+      ctx.stroke();
+
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(x - size / 2, psy - size / 2, size, size);
+    }
 
     this.drawHud(ctx);
   }
