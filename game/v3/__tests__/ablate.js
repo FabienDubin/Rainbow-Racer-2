@@ -32,8 +32,8 @@ function play(p, seed, strip) {
            time: stats ? stats.timeSurvived : 90 };
 }
 const avg = (p, strip) => {
-  const r = Array.from({length:10},(_,i)=>play(p,(i+1)*7919,strip));
-  return { alt: Math.round(r.reduce((a,x)=>a+x.alt,0)/10), time: Math.round(r.reduce((a,x)=>a+x.time,0)/10) };
+  const r = Array.from({length:24},(_,i)=>play(p,(i+1)*7919,strip));
+  return { alt: Math.round(r.reduce((a,x)=>a+x.alt,0)/24), time: Math.round(r.reduce((a,x)=>a+x.time,0)/24) };
 };
 
 const CASES = [

@@ -217,8 +217,14 @@ export const GUST_START_M = 90;
 // — you cannot route around it — so its lift was an unconditional gift, and unconditional
 // gifts help careless play most (measured: the gradient fell to x1.22 either way). A column
 // you can enter or avoid is finally a decision.
-export const GUST_WIDTH = 150; // px across
-export const GUST_HEIGHT = 300; // px tall
+// Sizes vary per current, so no two feel the same: a narrow chimney you thread, a broad
+// shelf you ride. WIDTH IS CAPPED well under the corridor, because a current wide enough to
+// block the whole way stops being a choice — which is precisely how the first version of
+// this mechanic ended up rewarding careless play.
+export const GUST_WIDTH_MIN = 110;
+export const GUST_WIDTH_MAX = 260; // vs a 540px corridor: always room to go around
+export const GUST_HEIGHT_MIN = 360;
+export const GUST_HEIGHT_MAX = 760; // tall enough to be a real stretch of the climb
 export const GUST_UP_FORCE = 520; // px/s² — near weightless inside an updraft
 export const GUST_DOWN_FORCE = 400; // px/s² of extra sink in a downdraft
 export const GUST_UP_CHANCE = 0.62; // updrafts are the commoner kind, so the net is a gift
@@ -232,5 +238,9 @@ export const RAIDER_START_M = 160;
 export const RAIDER_ROWS_APART = 5;
 export const RAIDER_SPEED = 210; // px/s toward the player
 export const RAIDER_RANGE = 340; // px at which it wakes and starts hunting
-export const RAIDER_STEAL = 6; // dust taken per hit
-export const RAIDER_COOLDOWN = 2.2; // s before it can steal again
+export const RAIDER_STEAL = 6; // dust taken, once, and then it is gone
+// A magpie used to keep hunting on a cooldown, which meant four of them could pile up and
+// never let go — harassment rather than a threat. Now a theft is a discrete EVENT: it takes
+// its dust and flees off the side of the screen. You can lose to several of them, but never
+// to the same one twice.
+export const RAIDER_FLEE_SPEED = 520; // px/s once it has what it came for

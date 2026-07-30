@@ -89,6 +89,12 @@ hidden behind "it's a bit weird". Keep them running as the physics changes.
   calls instead of discarding them, so placement and rotation can be asserted without a
   browser. Handy pattern for any other HUD element that is hard to catch on camera.
 
+A note on SEEDS. ablate.js runs 24 per configuration, and that number is not decoration: at
+10 seeds the gradient readings swung by 0.8 between runs, and I published a conclusion off
+that noise — claiming the bolts demonstrably raised the gradient when 24 seeds show they
+slightly compress it. Differences under ~0.2 in these numbers mean nothing. Raise the seed
+count before believing a comparison.
+
 A note on what the numbers can and cannot say: the bots are crude and do not chain
 momentum the way a person does, so treat the absolute altitudes as a floor. What they
 are genuinely good at is catching *ordering* bugs — a degenerate strategy quietly

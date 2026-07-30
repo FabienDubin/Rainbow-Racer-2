@@ -20,6 +20,16 @@ const PROGRESSION: { root: number; chord: number[] }[] = [
   { root: 38, chord: [50, 54, 57] }, // D
 ];
 
+// The end-of-run screens get their own music: same key, minor turn, half the tempo and only
+// the quiet layers. A run ending on the same upbeat loop as the run itself felt indifferent
+// to what just happened.
+const AFTERMATH: { root: number; chord: number[] }[] = [
+  { root: 42, chord: [54, 57, 61] }, // F#m
+  { root: 38, chord: [50, 53, 57] }, // Dm-ish
+  { root: 40, chord: [52, 55, 59] }, // Em
+  { root: 33, chord: [45, 48, 52] }, // A minor low
+];
+
 const PENTATONIC = [0, 2, 4, 7, 9];
 
 const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
@@ -40,6 +50,7 @@ export class GameAudio {
 
   /** 0..4 — how many layers should be audible. Driven by the player's chain. */
   private targetTier = 0;
+  private mood: "play" | "aftermath" = "play";
 
   init(): void {
     if (this.ctx || typeof window === "undefined") return;
@@ -86,9 +97,19 @@ export class GameAudio {
     if (this.ctx.state === "suspended") await this.ctx.resume();
   }
 
-  startMusic(): void {
+  startMusic(mood: "play" | "aftermath" = "play"): void {
     void this.resume();
-    if (!this.ctx || this.timer !== null) return;
+    if (!this.ctx) return;
+    this.mood = mood;
+    if (mood === "aftermath") {
+      this.targetTier = 0;
+      // Only the pad and a sparse bass; deliberately thin
+      LAYERS.forEach((layer, i) => {
+        const g = this.busses.get(layer);
+        if (g) g.gain.setTargetAtTime(i <= 1 ? (i === 0 ? 0.3 : 0.16) : 0, this.ctx!.currentTime, 0.4);
+      });
+    }
+    if (this.timer !== null) return;
     this.step = 0;
     this.nextNoteTime = this.ctx.currentTime + 0.06;
     // Schedule ahead on a coarse timer: the classic Web Audio pattern, because setInterval
@@ -139,7 +160,8 @@ export class GameAudio {
   private schedule(): void {
     if (!this.ctx) return;
     const ahead = 0.12;
-    const stepDur = BEAT / 4;
+    // Half tempo on the aftermath screens: the same music slowed down reads as a comedown
+    const stepDur = (BEAT / 4) * (this.mood === "aftermath" ? 2 : 1);
     while (this.nextNoteTime < this.ctx.currentTime + ahead) {
       this.playStep(this.step, this.nextNoteTime);
       this.step++;
@@ -148,9 +170,19 @@ export class GameAudio {
   }
 
   private playStep(step: number, when: number): void {
-    const bar = Math.floor(step / 16) % PROGRESSION.length;
+    const table = this.mood === "aftermath" ? AFTERMATH : PROGRESSION;
+    const bar = Math.floor(step / 16) % table.length;
     const inBar = step % 16;
-    const { root, chord } = PROGRESSION[bar];
+    const { root, chord } = table[bar];
+
+    if (this.mood === "aftermath") {
+      // Pad on the bar, one low bass note halfway through. Nothing else.
+      if (inBar === 0) {
+        for (const n of chord) this.pad(midi(n), when, BAR * 2.2);
+      }
+      if (inBar === 8) this.bass(midi(root - 12), when);
+      return;
+    }
 
     // Pad: a sustained chord, re-struck at the top of each bar
     if (inBar === 0) {
@@ -390,6 +422,43 @@ export class GameAudio {
       this.blip(t + i * 0.13, midi(64 + semi), midi(64 + semi), 0.6, 0.16, "triangle")
     );
     this.noiseBurst(t, 1.2, 0.16, "lowpass", 400, "pad");
+  }
+
+  /** A card turning over: a short shuffle-flick, then the value lands. */
+  cardFlip(): void {
+    if (!this.ctx) return;
+    const t = this.now();
+    this.noiseBurst(t, 0.07, 0.2, "highpass", 4200, "pad");
+    this.blip(t + 0.05, 500, 760, 0.12, 0.13, "triangle");
+  }
+
+  /** A gift on the card: worth an actual fanfare, since it is the hook. */
+  giftFanfare(): void {
+    if (!this.ctx) return;
+    const t = this.now();
+    [0, 4, 7, 12, 16, 19].forEach((semi, i) =>
+      this.blip(t + i * 0.075, midi(69 + semi), midi(69 + semi), 0.55, 0.17, "triangle")
+    );
+    this.noiseBurst(t + 0.1, 0.5, 0.1, "highpass", 6000, "pad");
+  }
+
+  uiHover(): void {
+    if (!this.ctx) return;
+    this.blip(this.now(), 620, 700, 0.05, 0.05, "sine");
+  }
+
+  uiClick(): void {
+    if (!this.ctx) return;
+    this.blip(this.now(), 740, 480, 0.09, 0.13, "triangle");
+  }
+
+  /** A purchase: heavier than a click, so spending feels like spending. */
+  purchase(): void {
+    if (!this.ctx) return;
+    const t = this.now();
+    [0, 7, 12].forEach((semi, i) =>
+      this.blip(t + i * 0.06, midi(64 + semi), midi(64 + semi), 0.3, 0.15, "triangle")
+    );
   }
 
   reward(): void {

@@ -28,11 +28,12 @@ import {
   CAM_SPEED_LOOKAHEAD, MAX_ATTACH_TIME_DIVE, MAX_ATTACH_TIME_LIFT, MAX_SWING_SPEED,
   MAX_SWING_TANGENTIAL, MIN_SWING_ANGLE, PX_PER_METER,
   GRAB_COOLDOWN, REEL_SPEED, REF_RELEASE_SPEED, REGRAB_LOCKOUT, ROPE_MIN, ROW_MARGIN_X,
-  ROW_SPACING, WRAP_MARGIN, BOLT_ARM_RANGE, BOLT_COOLDOWN, BOLT_ROWS_APART,
+  ROW_SPACING, WRAP_MARGIN, BOLT_ARM_RANGE, BOLT_COOLDOWN, BOLT_ROWS_APART, RAIDER_FLEE_SPEED,
   BOLT_START_M, BOLT_STRIKE, BOLT_TELEGRAPH, BOLT_THICKNESS,
   CHECKPOINT_PUSHBACK, STUN_DROP, STUN_TIME, HIT_FLASH, HIT_SHAKE, HIT_STOP,
-  GUST_DOWN_FORCE, GUST_HEIGHT, GUST_ROWS_APART, GUST_START_M, GUST_UP_CHANCE, GUST_WIDTH,
-  GUST_UP_FORCE, RAIDER_COOLDOWN, RAIDER_RANGE,
+  GUST_DOWN_FORCE, GUST_HEIGHT_MAX, GUST_HEIGHT_MIN, GUST_ROWS_APART, GUST_START_M,
+  GUST_UP_CHANCE, GUST_WIDTH_MAX, GUST_WIDTH_MIN,
+  GUST_UP_FORCE, RAIDER_RANGE,
   RAIDER_ROWS_APART, RAIDER_SPEED, RAIDER_START_M, RAIDER_STEAL,
   CHECKPOINT_FIRST_M, CHECKPOINT_GROWTH, DUST_BONUS_CHANCE, DUST_BONUS_VALUE,
   DUST_LINE_PER_ROW, DUST_MAGNET_RADIUS, DUST_RADIUS,
@@ -56,6 +57,8 @@ interface Bolt {
 interface Gust {
   x: number;
   y: number;
+  w: number;
+  h: number;
   dir: number; // +1 lifts (Ascendance), -1 sinks (Rabattant)
 }
 
@@ -63,7 +66,7 @@ interface Raider {
   x: number;
   y: number;
   awake: boolean;
-  cooldown: number;
+  fleeing: number; // 0 = still hunting, otherwise the direction it bolted
   flap: number; // wing phase
 }
 
@@ -432,10 +435,7 @@ export class ProtoEngine {
     // ---- Courants: vertical, so entering one is a choice rather than a perturbation
     this.inGust = 0;
     for (const g of this.gusts) {
-      if (
-        Math.abs(this.py - g.y) < GUST_HEIGHT / 2 &&
-        Math.abs(this.px - g.x) < GUST_WIDTH / 2
-      ) {
+      if (Math.abs(this.py - g.y) < g.h / 2 && Math.abs(this.px - g.x) < g.w / 2) {
         this.vy += g.dir * (g.dir > 0 ? GUST_UP_FORCE : GUST_DOWN_FORCE) * dt;
         this.inGust = g.dir;
       }
@@ -444,8 +444,15 @@ export class ProtoEngine {
 
     // ---- Pilleurs: they steal dust and break the chain
     for (const r of this.raiders) {
-      r.cooldown = Math.max(0, r.cooldown - dt);
-      r.flap += dt * 12;
+      r.flap += dt * (r.fleeing ? 20 : 12);
+
+      if (r.fleeing) {
+        // Bolt for the nearest edge and keep climbing out of frame
+        r.x += r.fleeing * RAIDER_FLEE_SPEED * dt;
+        r.y += RAIDER_FLEE_SPEED * 0.45 * dt;
+        continue;
+      }
+
       const dx = this.px - r.x;
       const dy = this.py - r.y;
       const dist = Math.hypot(dx, dy);
@@ -454,19 +461,25 @@ export class ProtoEngine {
         r.x += (dx / (dist || 1)) * RAIDER_SPEED * dt;
         r.y += (dy / (dist || 1)) * RAIDER_SPEED * dt;
       }
-      if (dist < 30 && r.cooldown <= 0 && this.dustEarned > 0) {
+      if (dist < 30 && this.dustEarned > 0) {
         const taken = Math.min(RAIDER_STEAL, this.dustEarned);
         this.dustEarned -= taken;
         this.stolen += taken;
         this.chain = 0;
-        r.cooldown = RAIDER_COOLDOWN;
+        // It got what it came for: away it goes, toward whichever side is closer
+        r.fleeing = r.x < VIEW_W / 2 ? -1 : 1;
         this.shake = Math.max(this.shake, 6);
         audio.steal();
         haptic(30);
         this.pickups.push({ x: r.x, y: r.y, text: `-${taken}`, life: 0.8, big: true });
       }
     }
-    this.raiders = this.raiders.filter((r) => r.y > this.camY - this.viewH);
+    this.raiders = this.raiders.filter(
+      (r) =>
+        r.y > this.camY - this.viewH &&
+        r.x > -WRAP_MARGIN - 120 &&
+        r.x < VIEW_W + WRAP_MARGIN + 120
+    );
 
     // ---- Éclairs
     this.updateBolts(dt);
@@ -832,11 +845,20 @@ export class ProtoEngine {
         Math.random() < 0.5
       ) {
         this.rowsSinceGust = 0;
+        const lift = Math.random() < GUST_UP_CHANCE;
+        const w = GUST_WIDTH_MIN + Math.random() * (GUST_WIDTH_MAX - GUST_WIDTH_MIN);
+        // Updrafts run taller than downdrafts: a gift is worth a long ride, a hazard only
+        // needs to be long enough to be a real decision.
+        const h =
+          GUST_HEIGHT_MIN +
+          Math.random() * (GUST_HEIGHT_MAX - GUST_HEIGHT_MIN) * (lift ? 1 : 0.55);
         this.gusts.push({
           // Offset from the anchor chain, so taking a current is a detour worth choosing
-          x: clampX(x + (Math.random() < 0.5 ? -1 : 1) * (110 + Math.random() * 120)),
-          y: this.generatedTo + ROW_SPACING * 0.4,
-          dir: Math.random() < GUST_UP_CHANCE ? 1 : -1,
+          x: clampX(x + (Math.random() < 0.5 ? -1 : 1) * (110 + Math.random() * 130)),
+          y: this.generatedTo + h * 0.35,
+          w,
+          h,
+          dir: lift ? 1 : -1,
         });
       }
 
@@ -852,7 +874,7 @@ export class ProtoEngine {
           x: clampX(x + (Math.random() - 0.5) * 320),
           y: this.generatedTo + ROW_SPACING * 0.7,
           awake: false,
-          cooldown: 0,
+          fleeing: 0,
           flap: Math.random() * 6,
         });
       }
@@ -1057,8 +1079,8 @@ export class ProtoEngine {
   private drawGusts(ctx: CanvasRenderingContext2D): void {
     for (const g of this.gusts) {
       const sy = this.screenY(g.y);
-      if (sy < -GUST_HEIGHT || sy > this.viewH + GUST_HEIGHT) continue;
-      drawGust(ctx, g.x, sy, GUST_WIDTH, GUST_HEIGHT, g.dir, this.time);
+      if (sy < -g.h || sy > this.viewH + g.h) continue;
+      drawGust(ctx, g.x, sy, g.w, g.h, g.dir, this.time);
     }
   }
 
@@ -1066,7 +1088,7 @@ export class ProtoEngine {
     for (const r of this.raiders) {
       const sy = this.screenY(r.y);
       if (sy < -40 || sy > this.viewH + 40) continue;
-      drawRaider(ctx, r.x, sy, r.awake, r.cooldown > 0, r.flap, this.px - r.x);
+      drawRaider(ctx, r.x, sy, r.awake, r.fleeing !== 0, r.flap, r.fleeing || this.px - r.x);
     }
   }
 

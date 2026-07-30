@@ -450,7 +450,7 @@ export function drawRaider(
   x: number,
   y: number,
   awake: boolean,
-  sated: boolean,
+  fleeing: boolean,
   flap: number,
   towardX: number
 ): void {
@@ -460,7 +460,8 @@ export function drawRaider(
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(face, 1);
-  ctx.globalAlpha = sated ? 0.45 : 1;
+  // Fleeing, it fades as it leaves — you can see the threat is over rather than guessing
+  ctx.globalAlpha = fleeing ? 0.7 : 1;
 
   // Wings behind
   ctx.fillStyle = "#2a2740";
@@ -494,6 +495,14 @@ export function drawRaider(
   ctx.beginPath();
   ctx.ellipse(-2, 1.5, 5, 3, -0.2, 0, Math.PI * 2);
   ctx.fill();
+
+  // A stolen mote in the beak, so what just happened is legible
+  if (fleeing) {
+    ctx.fillStyle = "#ffd166";
+    ctx.beginPath();
+    ctx.arc(19, -2.6, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   // Eye: red and open once it has seen you
   ctx.fillStyle = awake ? "#ff6b6b" : "rgba(255,255,255,0.55)";

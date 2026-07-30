@@ -84,6 +84,8 @@ export default function ProtoShell() {
       setPicked(null);
       setScreen("lottery");
       setRank(null);
+      // A different, slower piece for the screens after a run
+      audio.startMusic("aftermath");
 
       // Weekly board: only submit when they have chosen a name
       const score = runScore(s);
@@ -121,6 +123,9 @@ export default function ProtoShell() {
   const pickCard = (i: number) => {
     if (picked !== null) return;
     setPicked(i);
+    audio.cardFlip();
+    // The celebration is bigger when the card you turned actually held the gift
+    window.setTimeout(() => (cards[i].gift ? audio.giftFanfare() : audio.reward()), 180);
     // Cadence follows whether a gift was on the TABLE, not whether this card had it
     persist(applyCard(loadMeta(), cards[i], cards.some((c) => c.gift !== null)));
   };
@@ -142,6 +147,12 @@ export default function ProtoShell() {
     () => meta.consumables.map((id) => byId(id)?.name).filter(Boolean) as string[],
     [meta.consumables]
   );
+
+  // One place adds sound to a control, so no button can be forgotten
+  const sfx = {
+    onPointerEnter: () => audio.uiHover(),
+    onPointerDown: () => audio.uiClick(),
+  };
 
   const owned = (u: Upgrade) =>
     (u.kind === "permanent" && meta.permanents.includes(u.id)) ||
@@ -249,6 +260,7 @@ export default function ProtoShell() {
                 />
                 <button
                   className="proto-btn"
+                  {...sfx}
                   onClick={() => {
                     persist({ ...loadMeta(), name: nameDraft.trim() });
                     play();
@@ -257,7 +269,7 @@ export default function ProtoShell() {
                   Commencer
                 </button>
                 {meta.dust > 0 && (
-                  <button className="proto-btn-ghost" onClick={() => setScreen("shop")}>
+                  <button className="proto-btn-ghost" onClick={() => setScreen("shop")} {...sfx}>
                     Boutique
                   </button>
                 )}
@@ -315,6 +327,7 @@ export default function ProtoShell() {
                         picked !== null ? " revealed" : ""
                       }`}
                       onClick={() => pickCard(i)}
+                      onPointerEnter={() => picked === null && audio.uiHover()}
                       disabled={picked !== null}
                     >
                       {picked === null ? (
@@ -337,14 +350,15 @@ export default function ProtoShell() {
 
                 {picked !== null && (
                   <div className="proto-actions">
-                    <button className="proto-btn" onClick={play}>
+                    <button className="proto-btn" onClick={play} {...sfx}>
                       Rejouer <small>(Entrée)</small>
                     </button>
-                    <button className="proto-btn-ghost" onClick={() => setScreen("shop")}>
+                    <button className="proto-btn-ghost" onClick={() => setScreen("shop")} {...sfx}>
                       Boutique · ✦ {meta.dust}
                     </button>
                     <button
                       className="proto-btn-ghost"
+                      {...sfx}
                       onClick={async () => {
                         const text =
                           `🦄 ${stats.altitudeM} m dans Rainbow Racer` +
@@ -398,7 +412,11 @@ export default function ProtoShell() {
                             key={u.id}
                             className={`proto-item${has || active ? " owned" : ""}`}
                             disabled={!can}
-                            onClick={() => persist(buy(loadMeta(), u.id))}
+                            onPointerEnter={() => can && audio.uiHover()}
+                            onClick={() => {
+                              audio.purchase();
+                              persist(buy(loadMeta(), u.id));
+                            }}
                           >
                             <span className="proto-item-icon">
                               <ShopIcon id={u.id} />
@@ -414,7 +432,7 @@ export default function ProtoShell() {
                     </div>
                   ))}
                 </div>
-                <button className="proto-btn" onClick={play}>
+                <button className="proto-btn" onClick={play} {...sfx}>
                   Jouer <small>(Entrée)</small>
                 </button>
                 <button
