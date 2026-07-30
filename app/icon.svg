@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Favicon, drawn at 64 and judged at 16. The old one was authored at 512 with 16px
+       strokes, which is half a pixel in a browser tab — invisible. Everything here is sized
+       so it survives being shrunk to a thumbnail: one bold arc, one horn, nothing else. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2159"/>
+      <stop offset="1" stop-color="#0b0918"/>
+    </linearGradient>
+    <linearGradient id="bow" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0"    stop-color="#ff4d6d"/>
+      <stop offset="0.22" stop-color="#ffb703"/>
+      <stop offset="0.45" stop-color="#5fe28a"/>
+      <stop offset="0.7"  stop-color="#3fa9ff"/>
+      <stop offset="1"    stop-color="#a56bff"/>
+    </linearGradient>
+    <linearGradient id="horn" x1="0" y1="1" x2="0.6" y2="0">
+      <stop offset="0" stop-color="#ffe9a8"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Dark tile so the mark holds up against both light and dark browser chrome -->
+  <rect width="64" height="64" rx="14" fill="url(#sky)"/>
+
+  <!-- The bow. 9px thick at a 64 viewBox is a bit over 2px at 16 — the thinnest a stroke can
+       be and still read as a shape rather than a smudge. -->
+  <path d="M11 50 Q32 12 53 50" fill="none" stroke="url(#bow)" stroke-width="13"
+        stroke-linecap="round" opacity="0.28"/>
+  <path d="M11 50 Q32 12 53 50" fill="none" stroke="url(#bow)" stroke-width="9"
+        stroke-linecap="round"/>
+
+  <!-- The horn at the crown: the one detail that says unicorn and not just "rainbow".
+       It must SIT on the arc. The apex of M11 50 Q32 12 53 50 is at y=31, not y=21, so the
+       first version floated ten pixels clear of it and read as an unrelated speck. -->
+  <path d="M26.5 32 L32 6 L37.5 32 Z" fill="url(#horn)"/>
+  <path d="M32 6 L32 32" stroke="#f3c96a" stroke-width="1.4" opacity="0.55"/>
+</svg>
