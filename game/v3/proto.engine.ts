@@ -13,6 +13,7 @@
 //
 // World Y points UP. Screen conversion happens only at draw time.
 
+import { RunConfig } from "./meta";
 import {
   AIR_DRAG, CAM_FOLLOW_SPEED, CAM_PLAYER_SCREEN_FRAC, CHAIN_DROP_TOLERANCE,
   DEATH_MARGIN, FLAP_CHARGES, FLAP_COOLDOWN, FLAP_IMPULSE, GRAVITY, MAX_FALL_SPEED,
@@ -20,8 +21,10 @@ import {
   MAX_SWING_TANGENTIAL, MIN_SWING_ANGLE, PX_PER_METER,
   GRAB_COOLDOWN, REEL_SPEED, REF_RELEASE_SPEED, REGRAB_LOCKOUT, ROPE_MIN, ROW_MARGIN_X,
   ROW_SPACING, WRAP_MARGIN, BOLT_ARM_RANGE, BOLT_COOLDOWN, BOLT_ROWS_APART,
-  BOLT_START_M, BOLT_STRIKE, BOLT_TELEGRAPH, BOLT_THICKNESS, CHECKPOINT_EVERY_M,
+  BOLT_START_M, BOLT_STRIKE, BOLT_TELEGRAPH, BOLT_THICKNESS,
   CHECKPOINT_PUSHBACK, STUN_DROP, STUN_TIME, HIT_FLASH, HIT_SHAKE, HIT_STOP,
+  CHECKPOINT_FIRST_M, CHECKPOINT_GROWTH, DUST_BONUS_CHANCE, DUST_BONUS_VALUE,
+  DUST_LINE_PER_ROW, DUST_MAGNET_RADIUS, DUST_RADIUS,
   START_VY, STORM_ACCEL, STORM_SPEED_BASE, STORM_START_BELOW,
   STREAK_COUNT, STREAK_MAX_SPEED, STREAK_MIN_SPEED, SWING_PUMP, SWING_RECOVERY_DRIVE,
   SWING_STALL_FLOOR, RELEASE_KICK, TETHER_RANGE, VIEW_H, VIEW_W, WHIP_RECOVERY,
@@ -39,6 +42,13 @@ interface Bolt {
   timer: number; // seconds spent in the current state
 }
 
+interface Dust {
+  x: number;
+  y: number;
+  value: number;
+  taken: boolean;
+}
+
 interface Anchor {
   x: number;
   y: number;
@@ -54,6 +64,7 @@ export interface ProtoStats {
   slips: number; // releases with no real swing behind them
   hits: number; // times caught by a bolt
   checkpoints: number; // paliers crossed
+  dust: number; // poussière collected — kept whatever happens
   pureFlight: boolean; // reached the end without a single flap
   timeSurvived: number;
 }
@@ -92,7 +103,11 @@ export class ProtoEngine {
   private bolts: Bolt[] = [];
   private stunTime = 0; // s of lost control after being hit
   private hits = 0;
-  private nextCheckpointM = CHECKPOINT_EVERY_M;
+  private nextCheckpointM = CHECKPOINT_FIRST_M;
+  private checkpointGap = CHECKPOINT_FIRST_M;
+  private dusts: Dust[] = [];
+  private dustEarned = 0;
+  private talismanLeft = 0;
   private checkpoints = 0;
   private checkpointToast = 0;
   private hitFlash = 0;
@@ -139,7 +154,12 @@ export class ProtoEngine {
 
   constructor(
     private canvas: HTMLCanvasElement,
-    private onEnd: (stats: ProtoStats) => void
+    private onEnd: (stats: ProtoStats) => void,
+    private cfg: RunConfig = {
+      extraWings: 0, extraTetherRange: 0, startBoost: false, talisman: false,
+      magnet: false, stormFactor: 1, dustFactor: 1, noBolts: false, noWings: false,
+      anchorScarcity: 1,
+    }
   ) {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D context unavailable");
@@ -150,8 +170,20 @@ export class ProtoEngine {
     this.viewH = Math.round(VIEW_W * (boxH / boxW));
     canvas.width = VIEW_W;
     canvas.height = this.viewH;
+    this.flapCharges = this.maxWings();
+    this.talismanLeft = this.cfg.talisman ? 1 : 0;
+    if (this.cfg.startBoost) {
+      this.py = 30 * PX_PER_METER;
+      this.peakY = this.py;
+      this.stormY = this.py - STORM_START_BELOW;
+    }
     this.camY = this.py + (0.5 - CAM_PLAYER_SCREEN_FRAC) * this.viewH * -1;
     this.generateUpTo(this.camY + this.viewH * 1.5);
+  }
+
+  private maxWings(): number {
+    if (this.cfg.noWings) return 0;
+    return FLAP_CHARGES + this.cfg.extraWings;
   }
 
   // ------------------------------------------------------------- lifecycle
@@ -281,11 +313,25 @@ export class ProtoEngine {
     this.generateUpTo(this.camY + this.viewH * 1.2);
     this.anchors = this.anchors.filter((a) => a.y > this.camY - this.viewH);
 
+    // ---- Poussière
+    const magnetR = this.cfg.magnet ? DUST_MAGNET_RADIUS : DUST_RADIUS;
+    for (const d of this.dusts) {
+      if (d.taken) continue;
+      const dx = d.x - this.px;
+      const dy = d.y - this.py;
+      if (Math.hypot(dx, dy) < magnetR) {
+        d.taken = true;
+        this.dustEarned += d.value;
+      }
+    }
+    this.dusts = this.dusts.filter((d) => !d.taken && d.y > this.camY - this.viewH);
+
     // ---- Paliers: crossing one shoves the storm back down
     const altM = this.peakY / PX_PER_METER;
     if (altM >= this.nextCheckpointM) {
       this.checkpoints++;
-      this.nextCheckpointM += CHECKPOINT_EVERY_M;
+      this.checkpointGap *= CHECKPOINT_GROWTH;
+      this.nextCheckpointM += this.checkpointGap;
       this.stormY -= CHECKPOINT_PUSHBACK;
       this.checkpointToast = 2.2;
     }
@@ -294,7 +340,7 @@ export class ProtoEngine {
     this.updateBolts(dt);
 
     // ---- Le Grondement rises, and accelerates
-    this.stormY += (STORM_SPEED_BASE + STORM_ACCEL * this.time) * dt;
+    this.stormY += (STORM_SPEED_BASE + STORM_ACCEL * this.time) * this.cfg.stormFactor * dt;
 
     // ---- Fail: caught by the storm, or dropped off the bottom of the view
     if (this.py < this.stormY) this.end();
@@ -333,7 +379,7 @@ export class ProtoEngine {
       const dx = a.x - this.px;
       const dy = a.y - this.py;
       const dist = Math.hypot(dx, dy);
-      if (dist > TETHER_RANGE || dist < 30) continue;
+      if (dist > TETHER_RANGE + this.cfg.extraTetherRange || dist < 30) continue;
       // Still prefer height, but only mildly: now that a catch whips your dive speed
       // into the swing, deliberately grabbing a ring below you and falling past it is
       // a real tactic rather than a mistake, so it must stay selectable.
@@ -548,6 +594,11 @@ export class ProtoEngine {
       }
 
       if (b.state === "strike" && this.stunTime <= 0 && Math.abs(this.py - b.y) < BOLT_THICKNESS / 2) {
+        if (this.talismanLeft > 0) {
+          this.talismanLeft--;
+          this.hitFlash = HIT_FLASH * 0.5;
+          continue; // the Talisman eats it whole: no stun, no losses
+        }
         this.hits++;
         this.stunTime = STUN_TIME;
         this.hitFlash = HIT_FLASH;
@@ -604,9 +655,38 @@ export class ProtoEngine {
         });
       }
 
+      // LINE dust: on the natural route, the baseline income
+      for (let i = 0; i < DUST_LINE_PER_ROW; i++) {
+        this.dusts.push({
+          x: clampX(prevX + (x - prevX) * ((i + 1) / (DUST_LINE_PER_ROW + 1)) + (Math.random() - 0.5) * 70),
+          y: this.generatedTo - rise * ((i + 1) / (DUST_LINE_PER_ROW + 1)),
+          value: 1,
+          taken: false,
+        });
+      }
+
+      // BONUS arc: out on the wide part of this rung's swing circle, so only a later
+      // release sweeps it. Sometimes out in the wrap margin instead, which pays for
+      // riding the edge.
+      if (Math.random() < DUST_BONUS_CHANCE) {
+        const edge = Math.random() < 0.3;
+        const cx = edge ? (Math.random() < 0.5 ? -70 : VIEW_W + 70) : x;
+        const r = ROPE_MIN + 55;
+        for (let i = 0; i < 4; i++) {
+          const a = -0.6 + i * 0.4 + (Math.random() - 0.5) * 0.15;
+          this.dusts.push({
+            x: edge ? cx + (Math.random() - 0.5) * 90 : cx + Math.cos(a) * r,
+            y: this.generatedTo + (edge ? (i - 1.5) * 45 : Math.sin(a) * r * 0.8),
+            value: DUST_BONUS_VALUE,
+            taken: false,
+          });
+        }
+      }
+
       // A thunderhead guarding this stretch. Never at the very first altitudes: the Arc
       // has to be learned before it is tested.
       if (
+        !this.cfg.noBolts &&
         this.generatedTo / PX_PER_METER > BOLT_START_M &&
         this.rowsSinceBolt >= BOLT_ROWS_APART &&
         Math.random() < 0.6
@@ -644,6 +724,7 @@ export class ProtoEngine {
       slips: this.slips,
       hits: this.hits,
       checkpoints: this.checkpoints,
+      dust: Math.round(this.dustEarned * this.cfg.dustFactor),
       pureFlight: this.flaps === 0,
       timeSurvived: Math.round(this.time),
     });
@@ -666,6 +747,7 @@ export class ProtoEngine {
 
     this.drawAltitudeGrid(ctx);
     this.drawCheckpoints(ctx);
+    this.drawDust(ctx);
     this.drawBolts(ctx);
     this.drawStreaks(ctx);
     this.drawStorm(ctx);
@@ -792,15 +874,43 @@ export class ProtoEngine {
     }
   }
 
+  // Dust: a plain dot on the line, a ring for the valuable arcs so the two read apart
+  // at a glance and you can decide whether the detour is worth it.
+  private drawDust(ctx: CanvasRenderingContext2D): void {
+    for (const d of this.dusts) {
+      const sy = this.screenY(d.y);
+      if (sy < -20 || sy > this.viewH + 20) continue;
+      if (d.value > 1) {
+        ctx.strokeStyle = "rgba(255,255,255,0.85)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(d.x, sy, 6, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = "rgba(255,255,255,0.6)";
+        ctx.beginPath();
+        ctx.arc(d.x, sy, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
   // The next palier, drawn as a line you can aim at. Seeing the reward coming is what
   // turns the storm from a monotone squeeze into a rhythm.
   private drawCheckpoints(ctx: CanvasRenderingContext2D): void {
-    const spacing = CHECKPOINT_EVERY_M * PX_PER_METER;
-    const from = Math.floor((this.camY - this.viewH) / spacing) * spacing;
-    for (let y = from; y < this.camY + this.viewH; y += spacing) {
-      if (y <= 0) continue;
+    // Walk the growing sequence rather than a fixed grid
+    const top = this.camY + this.viewH;
+    const bottom = this.camY - this.viewH;
+    let gap = CHECKPOINT_FIRST_M;
+    let m = CHECKPOINT_FIRST_M;
+    for (let guard = 0; guard < 200 && m * PX_PER_METER < top; guard++) {
+      const y = m * PX_PER_METER;
+      const thisM = m;
+      gap *= CHECKPOINT_GROWTH;
+      m += gap;
+      if (y < bottom) continue;
       const sy = this.screenY(y);
-      const crossed = y / PX_PER_METER < this.nextCheckpointM - CHECKPOINT_EVERY_M + 1;
+      const crossed = thisM < this.nextCheckpointM;
       ctx.strokeStyle = crossed ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.5)";
       ctx.lineWidth = crossed ? 1 : 2;
       ctx.setLineDash(crossed ? [4, 10] : [14, 8]);
@@ -813,7 +923,7 @@ export class ProtoEngine {
         ctx.fillStyle = "rgba(255,255,255,0.6)";
         ctx.font = "11px ui-monospace, monospace";
         ctx.textAlign = "right";
-        ctx.fillText(`PALIER ${Math.round(y / PX_PER_METER)}m`, VIEW_W - 8, sy - 6);
+        ctx.fillText(`PALIER ${Math.round(thisM)}m`, VIEW_W - 8, sy - 6);
       }
     }
   }
@@ -1035,6 +1145,8 @@ export class ProtoEngine {
     const speed = Math.round(Math.hypot(this.vx, this.vy));
     ctx.fillStyle = speed > STREAK_MIN_SPEED ? "#fff" : "rgba(255,255,255,0.5)";
     ctx.fillText(`${speed} px/s`, 18, 140);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(`poussière ${Math.round(this.dustEarned * this.cfg.dustFactor)}`, 18, 180);
     if (this.anchor) {
       ctx.fillStyle = "rgba(255,255,255,0.55)";
       const left = Math.max(0, this.attachLimit - this.attachTime);

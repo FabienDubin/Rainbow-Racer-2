@@ -54,6 +54,15 @@ hidden behind "it's a bit weird". Keep them running as the physics changes.
 - **phase1render.js** — asserts the palier lines and each bolt state actually draw, and
   that the strike lane hits inside and misses just outside.
 
+- **economy.js** — dust density per metre, then multiplied out across the three REAL run
+  profiles Fab gave me (80m beginner, 147m relaxed, 650m serious). Prices are checked as
+  "how many runs to afford this", per profile. Never price against bots: they top out at
+  75m and a real player does 650m.
+- **metaflow.js** — the meta state machine: buying, duplicate and broke rejections,
+  consumables being spent on run start, and a mode counting down exactly three runs. Also
+  caught the lottery dealing its cards in ascending order, which made "pick one of three"
+  really mean "always take the third".
+
 - **hit.js** — every consequence of taking a bolt, and whether each one is actually
   drawn. Caught the punishment being silently undone: the stunned detach went through the
   normal release path, which re-scored the release and handed back the winch charge, a

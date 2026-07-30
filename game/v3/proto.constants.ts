@@ -146,10 +146,13 @@ export const CAM_SPEED_LOOKAHEAD = 0.16; // how far ahead the camera leans, per 
 // The storm alone is a monotone squeeze. Checkpoints give the run a pulse: reach one and
 // it is shoved back down, which turns constant pressure into tension-then-relief and
 // gives you something to aim at other than "not dying".
-// Spacing tuned against REAL runs, not bot runs. These were 150m apart because bots
-// reach 150-190m — but an actual player's run is 70-90m, so the first palier sat beyond
-// the end of nearly every game and the feature may as well not have existed.
-export const CHECKPOINT_EVERY_M = 50;
+// Paliers get FURTHER APART as you climb, rather than sitting on a fixed interval.
+// Fixed spacing cannot serve both ends of the skill range: at 50m apart a beginner's 80m
+// run gets one (right), but a real 650m run got thirteen (far too many). Growing the gap
+// 25% each time keeps the opening identical — 147m still gives two — while a 650m run
+// gives six. Gaps: 50, 112, 190, 288, 410, 563, 754…
+export const CHECKPOINT_FIRST_M = 50;
+export const CHECKPOINT_GROWTH = 1.25;
 export const CHECKPOINT_PUSHBACK = 260; // px the storm loses when you cross one
 
 // ---- PHASE 1: les Éclairs ----
@@ -182,3 +185,20 @@ export const STUN_DROP = 260; // px/s downward kick, so a hit visibly costs you 
 export const HIT_STOP = 0.07; // s of frozen frame on impact — the classic weight cue
 export const HIT_FLASH = 1.0; // starting intensity of the white flash
 export const HIT_SHAKE = 14; // px of screen shake on impact
+
+// ---- Poussière d'étoile ----
+// Placement is the whole design. Dust sitting on your optimal line is free, and free
+// means meaningless. So it comes in two kinds:
+//
+//   LINE dust    — near the natural route between rungs. The baseline income, so a
+//                  beginner who ignores the economy entirely still earns something.
+//   BONUS arcs   — out on the WIDE part of a swing circle, and in the off-screen wrap
+//                  margins. Reaching them means releasing later or riding the edge, i.e.
+//                  playing the Arc better. Worth several times as much.
+//
+// This ties earning to the core verb instead of bolting a scavenger hunt on top.
+export const DUST_RADIUS = 26; // collection radius, generous
+export const DUST_LINE_PER_ROW = 2;
+export const DUST_BONUS_VALUE = 2;
+export const DUST_BONUS_CHANCE = 0.35; // rows that also get a bonus arc
+export const DUST_MAGNET_RADIUS = 150; // only with the Aimant consumable
