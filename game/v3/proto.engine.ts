@@ -635,6 +635,7 @@ export class ProtoEngine {
       ctx.fillRect(x - size / 2, psy - size / 2, size, size);
     }
 
+    this.drawOffscreenMarker(ctx);
     this.drawHud(ctx);
   }
 
@@ -654,6 +655,47 @@ export class ProtoEngine {
       const m = Math.round(y / PX_PER_METER);
       if (m % 50 === 0 && m >= 0) ctx.fillText(`${m}m`, 6, sy - 5);
     }
+  }
+
+  // While you are out in the off-screen margin there is nothing to read — with a rope
+  // attached you can infer your position from the arc, but in free flight you are just
+  // gone. This puts a small chevron on the edge you left from, at your altitude, angled
+  // the way you are actually travelling, so you always know where you are and where you
+  // are heading. It fades as you get further out, then you reappear on the far side.
+  private drawOffscreenMarker(ctx: CanvasRenderingContext2D): void {
+    const onScreen = this.px >= 0 && this.px < VIEW_W;
+    if (onScreen) return;
+
+    const offLeft = this.px < 0;
+    const dist = offLeft ? -this.px : this.px - VIEW_W;
+    const fade = 1 - Math.min(1, dist / (WRAP_MARGIN * 1.15));
+    const edgeX = offLeft ? 20 : VIEW_W - 20;
+    const y = Math.max(30, Math.min(this.viewH - 30, this.screenY(this.py)));
+
+    // Point along travel; screen Y is inverted relative to world Y
+    const angle = Math.atan2(-this.vy, this.vx);
+
+    ctx.save();
+    ctx.globalAlpha = 0.35 + fade * 0.55;
+    ctx.translate(edgeX, y);
+
+    // A hollow ring marks the altitude, so the marker is readable even head-on
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, 13, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.rotate(angle);
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.moveTo(11, 0);
+    ctx.lineTo(-4, -7);
+    ctx.lineTo(-4, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   // Speed streaks, aligned with travel and fading in above STREAK_MIN_SPEED. Now that

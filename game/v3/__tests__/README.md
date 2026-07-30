@@ -43,6 +43,10 @@ hidden behind "it's a bit weird". Keep them running as the physics changes.
 - **speedcap.js** — checks speed is not compounding. The release kick is multiplicative,
   so it needs a real governor; the screen walls used to be one by accident.
 
+- **marker.js** — the off-screen indicator. Uses a canvas stub that *records* draw
+  calls instead of discarding them, so placement and rotation can be asserted without a
+  browser. Handy pattern for any other HUD element that is hard to catch on camera.
+
 A note on what the numbers can and cannot say: the bots are crude and do not chain
 momentum the way a person does, so treat the absolute altitudes as a floor. What they
 are genuinely good at is catching *ordering* bugs — a degenerate strategy quietly
