@@ -530,81 +530,169 @@ export function drawStorm(
   cam: Camera,
   topY: number,
   time: number,
-  gapM: number
+  gapM: number,
+  sky: SkyState
 ): void {
   // The lip can sit below the view while the run is going well. Draw the cloud MASS above
-  // it anyway — anvil tops, haze, a glow — or the threat only exists in the frame you die.
+  // it anyway — or the threat only exists in the frame you die in.
   if (topY > cam.viewH + STORM_HAZE) return;
 
-  // Haze above the lip: faint when you are safe, thick when it is about to have you
   const near = clamp01(1 - (topY - cam.viewH) / STORM_HAZE);
-  if (topY > cam.viewH - 10) {
-    const haze = ctx.createLinearGradient(0, topY - STORM_HAZE, 0, topY);
-    haze.addColorStop(0, "rgba(46,22,74,0)");
-    haze.addColorStop(1, `rgba(40,18,66,${(0.34 + 0.3 * near).toFixed(3)})`);
-    ctx.fillStyle = haze;
-    ctx.fillRect(0, topY - STORM_HAZE, cam.viewW, STORM_HAZE + 4);
 
-    // Anvil tops boiling up out of it, so the mass reads as cloud and not as a gradient
-    ctx.save();
-    ctx.fillStyle = `rgba(58,28,92,${(0.3 + 0.34 * near).toFixed(3)})`;
-    for (let i = 0; i < 7; i++) {
-      const cx = ((i * 137 + Math.sin(time * 0.24 + i) * 26) % (cam.viewW + 160)) - 80;
-      const r = 62 + Math.sin(i * 2.1) * 22;
-      const cy = topY - 34 - Math.abs(Math.sin(i * 1.7 + time * 0.3)) * 92;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
+  // Lightning inside the mass: a double flash, then a long wait. Deterministic from time so
+  // it needs no state, and it is the one thing that makes a cloud read as a STORM.
+  const cycle = time % 6.2;
+  const flash =
+    cycle < 0.09 ? 1 : cycle < 0.17 ? 0.35 : cycle < 0.26 ? 0.75 : 0;
+
+  // ---- The silhouette: a union of lobe profiles, traced as ONE path and filled ONCE.
+  // Filling separate ellipses was the whole problem — every circle showed its own edge, so
+  // it read as a pile of shapes instead of a cloud. Taking the highest lobe at each x and
+  // stroking that single contour is what turns it into a mass.
+  const bank = (
+    baseY: number,
+    count: number,
+    spread: number,
+    radius: number,
+    drift: number,
+    phase: number
+  ): ((x: number) => number) => {
+    const lobes: { x: number; cy: number; r: number }[] = [];
+    for (let i = 0; i < count; i++) {
+      const n = Math.sin(i * 12.9898 + phase) * 43758.5453;
+      const jitter = n - Math.floor(n); // deterministic pseudo-random, no state
+      const r = radius * (0.62 + jitter * 0.75);
+      lobes.push({
+        x: ((i * spread + time * drift + phase * 90) % (cam.viewW + spread * 2)) - spread,
+        // Breathing, at a different rate per lobe, so the crown boils slowly
+        cy: baseY - r * 0.35 + Math.sin(time * (0.32 + jitter * 0.5) + i) * 9,
+        r,
+      });
     }
-    ctx.restore();
+    return (x: number) => {
+      let top = baseY + 40;
+      for (const l of lobes) {
+        const dx = x - l.x;
+        if (dx > -l.r && dx < l.r) {
+          const y = l.cy - Math.sqrt(l.r * l.r - dx * dx);
+          if (y < top) top = y;
+        }
+      }
+      return top;
+    };
+  };
+
+  const STEP = 5;
+  const trace = (profile: (x: number) => number): void => {
+    ctx.beginPath();
+    ctx.moveTo(-4, cam.viewH + 80);
+    ctx.lineTo(-4, profile(-4));
+    for (let x = 0; x <= cam.viewW + 4; x += STEP) ctx.lineTo(x, profile(x));
+    ctx.lineTo(cam.viewW + 4, cam.viewH + 80);
+    ctx.closePath();
+  };
+
+  // Three banks, back to front: each is paler, softer and taller than the one in front, which
+  // is what gives the mass depth instead of a flat cut-out.
+  // A storm is not black. Collapsing the body to near-black threw away all the colour and
+  // left a silhouette; these keep a bruised teal-violet in the mass, which is what a real
+  // thunderhead looks like from underneath.
+  const banks = [
+    { p: bank(topY + 30, 8, 118, 168, 3.2, 0.7), fill: "rgba(74,62,124,", a: 0.46 },
+    { p: bank(topY + 12, 10, 96, 132, 5.4, 2.3), fill: "rgba(46,44,92,", a: 0.68 },
+    { p: bank(topY, 13, 78, 98, 8.1, 4.1), fill: "rgba(26,30,60,", a: 0.92 },
+  ];
+
+  for (const b of banks) {
+    trace(b.p);
+    const g = ctx.createLinearGradient(0, topY - 150, 0, cam.viewH);
+    g.addColorStop(0, `${b.fill}${(b.a * (0.7 + 0.3 * near)).toFixed(3)})`);
+    // The bruise: a sickly teal-green mid-body, the tell of a storm about to break
+    g.addColorStop(0.42, `rgba(30,52,66,${(b.a * 0.9).toFixed(3)})`);
+    g.addColorStop(1, "rgba(11,10,28,0.99)");
+    ctx.fillStyle = g;
+    ctx.fill();
+
+    // Lightning lights the mass from within, brightest on the back banks
+    if (flash > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = `rgba(164,150,255,${(flash * 0.2).toFixed(3)})`;
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
-  const g = ctx.createLinearGradient(0, topY, 0, cam.viewH);
-  g.addColorStop(0, "rgba(30,16,48,0.72)");
-  g.addColorStop(0.35, "rgba(18,9,32,0.95)");
-  g.addColorStop(1, "#0a0414");
-  ctx.fillStyle = g;
-
-  ctx.beginPath();
-  ctx.moveTo(0, cam.viewH + 60);
-  ctx.lineTo(0, topY);
-  for (let x = 0; x <= cam.viewW; x += 12) {
-    const churn =
-      Math.sin(x * 0.021 + time * 1.9) * 11 +
-      Math.sin(x * 0.052 - time * 2.7) * 6 +
-      Math.sin(x * 0.011 + time * 0.8) * 14;
-    ctx.lineTo(x, topY + churn);
-  }
-  ctx.lineTo(cam.viewW, cam.viewH + 60);
-  ctx.closePath();
-  ctx.fill();
-
-  // A bright, restless lip so the boundary is unmistakable
+  // ---- Rim light on the front crest, borrowed from the band's own light so the storm
+  // belongs to this sky rather than being a purple sticker on top of it.
+  // Cold and electric, with only a trace of the band's own light. Using sky.light straight
+  // made the crest catch the dawn and read as a golden hill instead of a thunderhead.
+  const front = banks[2].p;
   ctx.save();
-  ctx.strokeStyle = "rgba(196,150,255,0.65)";
-  ctx.lineWidth = 2;
-  ctx.shadowColor = "rgba(170,110,255,0.9)";
-  ctx.shadowBlur = 14;
+  const RIM = "#cfd8ff";
+  ctx.strokeStyle = RIM;
+  ctx.globalAlpha = 0.4 + 0.34 * near;
+  ctx.lineWidth = 1.7;
+  ctx.shadowColor = flash > 0 ? "#ffffff" : RIM;
+  ctx.shadowBlur = flash > 0 ? 26 : 13;
+
+  // A whisper of the band's light just under the crest, so the storm is still in THIS sky
+  ctx.save();
+  ctx.strokeStyle = sky.light;
+  ctx.globalAlpha = 0.14;
+  ctx.lineWidth = 5;
   ctx.beginPath();
-  for (let x = 0; x <= cam.viewW; x += 12) {
-    const churn =
-      Math.sin(x * 0.021 + time * 1.9) * 11 +
-      Math.sin(x * 0.052 - time * 2.7) * 6 +
-      Math.sin(x * 0.011 + time * 0.8) * 14;
-    if (x === 0) ctx.moveTo(x, topY + churn);
-    else ctx.lineTo(x, topY + churn);
+  for (let x = 0; x <= cam.viewW; x += STEP) {
+    const y = front(x) + 5;
+    if (x === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+  ctx.beginPath();
+  for (let x = 0; x <= cam.viewW; x += STEP) {
+    const y = front(x);
+    if (x === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
   }
   ctx.stroke();
   ctx.restore();
 
-  // How much air is left, on the thing that is taking it
+  // ---- Rain, only once it is close enough to matter. Slanted, short, and clipped to the
+  // mass so it never spills over the sky.
+  if (near > 0.25) {
+    ctx.save();
+    trace(front);
+    ctx.clip();
+    ctx.strokeStyle = `rgba(178,158,235,${(0.1 + 0.16 * near).toFixed(3)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i < 46; i++) {
+      const n = Math.sin(i * 78.233) * 43758.5453;
+      const j = n - Math.floor(n);
+      const x = ((i * 37 + time * 30) % (cam.viewW + 60)) - 30;
+      const y = topY + ((i * 53 + time * 260 + j * 200) % (cam.viewH - topY + 220));
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - 5, y + 22);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ---- How much air is left, on the thing that is taking it
   ctx.save();
   ctx.textAlign = "center";
   ctx.font = "600 12px ui-monospace, monospace";
-  ctx.fillStyle = gapM < 12 ? "#ffd0d0" : "rgba(255,255,255,0.72)";
+  const urgent = gapM < 12;
+  ctx.fillStyle = urgent ? "#ffd0d0" : "rgba(255,255,255,0.78)";
+  ctx.shadowColor = "rgba(0,0,0,0.85)";
+  ctx.shadowBlur = 6;
   // Pinned inside the view: the label is the warning, so it cannot scroll out with the lip
-  const labelY = Math.min(topY + 30, cam.viewH - 14);
-  ctx.fillText(`ORAGE  ${Math.max(0, Math.round(gapM))} m`, cam.viewW / 2, labelY);
+  ctx.fillText(
+    `ORAGE  ${Math.max(0, Math.round(gapM))} m`,
+    cam.viewW / 2,
+    Math.min(topY + 30, cam.viewH - 14)
+  );
   ctx.restore();
 }
 

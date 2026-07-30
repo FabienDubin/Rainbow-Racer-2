@@ -1214,7 +1214,8 @@ export class ProtoEngine {
       this.camera(),
       this.screenY(this.stormY),
       this.time,
-      (this.py - this.stormY) / PX_PER_METER
+      (this.py - this.stormY) / PX_PER_METER,
+      this.sky
     );
   }
 
