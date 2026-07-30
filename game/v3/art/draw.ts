@@ -653,28 +653,19 @@ export function drawPrism(ctx: CanvasRenderingContext2D, x: number, y: number, p
     ctx.rotate(rad(deg));
     ctx.globalAlpha *= alpha;
 
-    const fore = ctx.createLinearGradient(0, 0, len, -len * 0.2);
-    fore.addColorStop(0, "#ffd3e8");
-    fore.addColorStop(0.55, "#ff9ecb");
-    fore.addColorStop(1, "#f56fb0");
+    // ONE wing per side. A forewing plus a hindwing made the pair read as a V with a pink
+    // lobe hanging out below, which Fab rightly called ugly. A single fuller shape, pale at
+    // the root and pink at the rim, reads as a wing instead of two stuck-together pieces.
+    const fore = ctx.createLinearGradient(0, 0, len * 0.95, -len * 0.28);
+    fore.addColorStop(0, "#ffffff");
+    fore.addColorStop(0.4, "#ffd9ec");
+    fore.addColorStop(1, "#f97fbb");
     ctx.fillStyle = fore;
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.quadraticCurveTo(len * 0.32, -len * 0.5, len * 0.92, -len * 0.3);
-    ctx.quadraticCurveTo(len * 1.08, -len * 0.02, len * 0.6, len * 0.09);
-    ctx.quadraticCurveTo(len * 0.28, len * 0.15, 0, 0);
-    ctx.closePath();
-    ctx.fill();
-
-    const hind = ctx.createLinearGradient(0, 0, len * 0.6, len * 0.3);
-    hind.addColorStop(0, "#ffc0dd");
-    hind.addColorStop(1, "#ef62a6");
-    ctx.fillStyle = hind;
-    ctx.beginPath();
-    ctx.moveTo(0, 1);
-    ctx.quadraticCurveTo(len * 0.3, len * 0.28, len * 0.6, len * 0.34);
-    ctx.quadraticCurveTo(len * 0.7, len * 0.12, len * 0.44, len * 0.04);
-    ctx.quadraticCurveTo(len * 0.2, 0, 0, 1);
+    ctx.quadraticCurveTo(len * 0.26, -len * 0.54, len * 0.88, -len * 0.36);
+    ctx.quadraticCurveTo(len * 1.12, -len * 0.06, len * 0.74, len * 0.15);
+    ctx.quadraticCurveTo(len * 0.36, len * 0.22, 0, 0);
     ctx.closePath();
     ctx.fill();
 
@@ -682,18 +673,18 @@ export function drawPrism(ctx: CanvasRenderingContext2D, x: number, y: number, p
       // Veins and two pale eyespots — the cues that say butterfly rather than petal
       ctx.strokeStyle = "rgba(255,255,255,0.55)";
       ctx.lineWidth = 0.8;
-      for (const t of [-0.3, -0.12, 0.04]) {
+      for (const t of [-0.34, -0.14, 0.06]) {
         ctx.beginPath();
-        ctx.moveTo(len * 0.06, 0);
-        ctx.quadraticCurveTo(len * 0.5, t * len * 0.9, len * 0.88, t * len * 0.8);
+        ctx.moveTo(len * 0.05, 0);
+        ctx.quadraticCurveTo(len * 0.5, t * len, len * 0.86, t * len * 0.85);
         ctx.stroke();
       }
-      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.fillStyle = "rgba(255,255,255,0.72)";
       ctx.beginPath();
-      ctx.arc(len * 0.66, -len * 0.22, len * 0.075, 0, Math.PI * 2);
+      ctx.arc(len * 0.68, -len * 0.26, len * 0.08, 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(len * 0.44, -len * 0.28, len * 0.05, 0, Math.PI * 2);
+      ctx.arc(len * 0.46, -len * 0.32, len * 0.052, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -702,7 +693,7 @@ export function drawPrism(ctx: CanvasRenderingContext2D, x: number, y: number, p
     ctx.lineWidth = pose.wingBoost > 0 ? 1.6 : 0.9;
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.quadraticCurveTo(len * 0.32, -len * 0.5, len * 0.92, -len * 0.3);
+    ctx.quadraticCurveTo(len * 0.26, -len * 0.54, len * 0.88, -len * 0.36);
     ctx.stroke();
     ctx.restore();
   };
