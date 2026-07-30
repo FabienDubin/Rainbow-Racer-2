@@ -7,7 +7,7 @@
 
 import { useEffect, useRef } from "react";
 import { BANDS, skyAt } from "@/game/v3/art/palette";
-import { drawPrism, drawTether, prismHornTip, PrismPose } from "@/game/v3/art/draw";
+import { drawPrism, drawTether, prismGrip, PrismPose } from "@/game/v3/art/draw";
 
 interface Cell {
   label: string;
@@ -19,25 +19,25 @@ interface Cell {
 const CELLS: Cell[] = [
   {
     label: "Montée",
-    note: "ailes qui battent, pattes repliées",
+    note: "ailes qui battent, jambes repliées",
     pose: () => ({
-      vx: 90, vy: 560, scale: 3, tumbling: 0, tethered: false,
+      vx: 90, vy: 560, scale: 3, tumbling: 0, tethered: false, hangAngle: null,
       flapPulse: 0.85, justAttached: 0, justReleased: 0,
     }),
   },
   {
     label: "Vol plané",
-    note: "ailes tendues, pattes qui cherchent le sol",
+    note: "bras écartés, ailes tendues",
     pose: () => ({
-      vx: 240, vy: -420, scale: 3, tumbling: 0, tethered: false,
+      vx: 240, vy: -420, scale: 3, tumbling: 0, tethered: false, hangAngle: null,
       flapPulse: 0, justAttached: 0, justReleased: 0,
     }),
   },
   {
     label: "Accrochée",
-    note: "ailes replongées, portée par la corde qui sort de sa corne",
+    note: "bras en l\u2019air, le corps pend sous la corde",
     pose: () => ({
-      vx: 480, vy: 120, scale: 3, tumbling: 0, tethered: true,
+      vx: 480, vy: 120, scale: 3, tumbling: 0, tethered: true, hangAngle: -1.05,
       flapPulse: 0, justAttached: 0, justReleased: 0,
     }),
     tether: true,
@@ -46,7 +46,7 @@ const CELLS: Cell[] = [
     label: "Au lâcher",
     note: "ailes grandes ouvertes, anneau de lumière",
     pose: () => ({
-      vx: 120, vy: 780, scale: 3, tumbling: 0, tethered: false,
+      vx: 120, vy: 780, scale: 3, tumbling: 0, tethered: false, hangAngle: null,
       flapPulse: 0.4, justAttached: 0, justReleased: 0.75,
     }),
   },
@@ -54,7 +54,7 @@ const CELLS: Cell[] = [
     label: "À l'accroche",
     note: "recul du corps, une seconde de compression",
     pose: () => ({
-      vx: 300, vy: 200, scale: 3, tumbling: 0, tethered: true,
+      vx: 300, vy: 200, scale: 3, tumbling: 0, tethered: true, hangAngle: -1.3,
       flapPulse: 0, justAttached: 0.9, justReleased: 0,
     }),
     tether: true,
@@ -63,7 +63,7 @@ const CELLS: Cell[] = [
     label: "Étourdie",
     note: "elle vrille, l'œil se ferme",
     pose: () => ({
-      vx: -60, vy: -300, scale: 3, tumbling: 0.3, tethered: false,
+      vx: -60, vy: -300, scale: 3, tumbling: 0.3, tethered: false, hangAngle: null,
       flapPulse: 0, justAttached: 0, justReleased: 0,
     }),
   },
@@ -98,8 +98,8 @@ export default function PrismSheet() {
 
         const pose: PrismPose = { ...cell.pose(t), light: sky.light, time: t };
         if (cell.tether) {
-          const horn = prismHornTip(pose);
-          drawTether(ctx, W - 18, 26, W / 2 + horn.dx, H / 2 + horn.dy, sky.light, t);
+          const grip = prismGrip(pose);
+          drawTether(ctx, W - 30, 24, W / 2 + grip.dx, H / 2 + grip.dy, sky.light, t);
         }
         drawPrism(ctx, W / 2, H / 2, pose);
       });

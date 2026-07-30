@@ -18,7 +18,7 @@ import { skyAt, SkyState } from "./art/palette";
 import {
   Camera, drawAnchor, drawDustMote, drawGarlandGem, drawGarlandThread, drawParallax,
   drawPalier, drawPrism, drawSky, drawStorm, drawTether, drawThundercloud, PrismPose,
-  prismHornTip,
+  prismGrip,
 } from "./art/draw";
 import {
   AIR_DRAG, CAM_FOLLOW_SPEED, CAM_PLAYER_SCREEN_FRAC, CHAIN_DROP_TOLERANCE,
@@ -206,6 +206,9 @@ export class ProtoEngine {
       scale: this.dashScale(),
       tumbling: this.stunTime > 0 ? STUN_TIME - this.stunTime : 0,
       tethered: this.anchor !== null,
+      hangAngle: this.anchor
+        ? Math.atan2(this.screenY(this.anchor.y) - this.screenY(this.py), this.anchor.x - this.px)
+        : null,
       flapPulse: this.flapPulse,
       justAttached: this.flashAttach,
       justReleased: this.flashRelease,
@@ -843,13 +846,14 @@ export class ProtoEngine {
       }
       ctx.restore();
 
-      const horn = prismHornTip(this.pose());
+      // The rope ends in her HANDS, and the body hangs from it — that is the whole read
+      const grip = prismGrip(this.pose());
       drawTether(
         ctx,
         this.anchor.x,
         ay,
-        this.px + horn.dx,
-        this.screenY(this.py) + horn.dy,
+        this.px + grip.dx,
+        this.screenY(this.py) + grip.dy,
         this.sky.light,
         this.time
       );

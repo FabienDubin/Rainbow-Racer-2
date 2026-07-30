@@ -482,6 +482,11 @@ export interface PrismPose {
   /** 0 = in control, rising = tumbling from a hit. */
   tumbling: number;
   tethered: boolean;
+  /**
+   * Screen-space angle from the character TOWARD the anchor. While tethered the whole
+   * body is rotated to hang from it, which is what makes a rope read as a rope.
+   */
+  hangAngle: number | null;
   /** 0..1, decays after each wingbeat. */
   flapPulse: number;
   /** 0..1, decays after catching an anchor. */
@@ -492,293 +497,373 @@ export interface PrismPose {
   time: number;
 }
 
-// The lean she is drawn at. The tether has to leave her HORN rather than her middle — she
-// is a unicorn projecting a rainbow, and that should be visible — so the engine needs the
-// same rotation to know where the horn tip actually is.
-export function prismLean(vx: number, vy: number, tumbling: number): number {
-  if (tumbling > 0) return tumbling * 14;
-  return Math.max(-0.5, Math.min(0.55, -vy / 1700 + vx / 4200));
+// A quadruped was the wrong body for this game and Fab spotted why: a horse in profile is a
+// long HORIZONTAL shape, so hanging it from a rope never reads, and a unicorn suspended by
+// its horn is plainly absurd. A small humanoid is compact and VERTICAL — it dangles from
+// its own hands, exactly as in Hang Line: Mountain Climber, which is the reference he
+// pointed at. It also reads far better at 50px on a phone.
+
+export function prismBodyAngle(pose: PrismPose): number {
+  if (pose.tumbling > 0) return pose.tumbling * 14;
+  if (pose.tethered && pose.hangAngle !== null) {
+    // Hang from the rope: the body's own "up" (-y) is aimed at the anchor
+    return pose.hangAngle + Math.PI / 2;
+  }
+  return Math.max(-0.6, Math.min(0.6, -pose.vy / 1500 + pose.vx / 3600));
 }
 
-export function prismHornTip(pose: PrismPose): { dx: number; dy: number } {
-  const a = prismLean(pose.vx, pose.vy, pose.tumbling);
-  const hx = 29 * pose.scale;
-  const hy = -13 * pose.scale;
+/** Where the hands are, in screen space relative to the character's centre. */
+export function prismGrip(pose: PrismPose): { dx: number; dy: number } {
+  const a = prismBodyAngle(pose);
+  const gx = 0;
+  const gy = -20 * pose.scale;
   return {
-    dx: hx * Math.cos(a) - hy * Math.sin(a),
-    dy: hx * Math.sin(a) + hy * Math.cos(a),
+    dx: gx * Math.cos(a) - gy * Math.sin(a),
+    dy: gx * Math.sin(a) + gy * Math.cos(a),
   };
 }
 
-// One leg, as two tapered segments. Four of them, posed per state — tucked while climbing
-// or carried, reaching while gliding, and paddling on each wingbeat, which is the detail
-// that makes her look alive rather than pivoted.
-function leg(
+// A streamer with a wave travelling down it. A single quadratic curve reads as a stiff
+// arc — "les rubans sont trop rectilignes" — so this is a polyline carrying a sine whose
+// amplitude grows toward the free end, which is how cloth actually behaves.
+function ribbon(
   ctx: CanvasRenderingContext2D,
-  hipX: number,
-  hipY: number,
-  thigh: number,
-  shin: number,
-  len: number
+  x0: number,
+  y0: number,
+  dirX: number,
+  dirY: number,
+  length: number,
+  colour: string,
+  width: number,
+  time: number,
+  phase: number,
+  amp: number,
+  waves: number
 ): void {
-  const kx = hipX + Math.cos(thigh) * len;
-  const ky = hipY + Math.sin(thigh) * len;
-  const fx = kx + Math.cos(shin) * len * 0.85;
-  const fy = ky + Math.sin(shin) * len * 0.85;
+  const len = Math.hypot(dirX, dirY) || 1;
+  const ux = dirX / len;
+  const uy = dirY / len;
+  // Perpendicular, for the wave to swing across
+  const nx = -uy;
+  const ny = ux;
+
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = width;
   ctx.beginPath();
-  ctx.moveTo(hipX, hipY);
-  ctx.lineTo(kx, ky);
-  ctx.lineWidth = 2.6;
+  const STEPS = 12;
+  for (let i = 0; i <= STEPS; i++) {
+    const s = i / STEPS;
+    const sway = Math.sin(s * Math.PI * 2 * waves - time * 6 + phase) * amp * s;
+    const px = x0 + ux * length * s + nx * sway;
+    const py = y0 + uy * length * s + ny * sway;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
   ctx.stroke();
+}
+
+function limb(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  a1: number,
+  a2: number,
+  l1: number,
+  l2: number,
+  w: number
+): void {
+  const kx = x + Math.cos(a1) * l1;
+  const ky = y + Math.sin(a1) * l1;
+  const ex = kx + Math.cos(a2) * l2;
+  const ey = ky + Math.sin(a2) * l2;
+  ctx.lineWidth = w;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(kx, ky);
+  ctx.stroke();
+  ctx.lineWidth = w * 0.8;
   ctx.beginPath();
   ctx.moveTo(kx, ky);
-  ctx.lineTo(fx, fy);
-  ctx.lineWidth = 1.9;
+  ctx.lineTo(ex, ey);
   ctx.stroke();
-  // Hoof: a tiny prism, matching the world's vocabulary
-  ctx.beginPath();
-  ctx.arc(fx, fy, 1.5, 0, Math.PI * 2);
-  ctx.fill();
 }
 
 export function drawPrism(ctx: CanvasRenderingContext2D, x: number, y: number, pose: PrismPose): void {
   const { vx, vy, scale, tumbling, tethered, flapPulse, justAttached, justReleased, light, time } = pose;
 
-  // The first pass at this was a faceted wedge and it read as a paper aeroplane, not a
-  // horse. What a horse needs before anything else is an ARCHED NECK and a distinct HEAD;
-  // without those, no amount of styling reads as equine. So the silhouette is built in
-  // proper parts — barrel, neck, head, four long legs, big pegasus wings — and only then
-  // faceted and lit.
+  // Prism is a KID IN A UNICORN COSTUME. That came from Fab — his daughter is permanently
+  // dressed as one — and it is the best direction of the whole build, for two reasons.
+  // It gives the game some warmth that a generic winged figure never would, and child
+  // proportions mean a big head, which is exactly what reads at 50px on a phone. The horn
+  // and mane live on the HOOD; the wings are stitched fabric, not raptor feathers.
   const climb = Math.max(0, Math.min(1, vy / 620));
   const dive = Math.max(0, Math.min(1, -vy / 700));
   const speed = Math.hypot(vx, vy);
   const beat = Math.sin(time * 15);
-
-  // Wing angle, in canvas degrees: 180 is straight back, 270 is straight up.
-  let wingDeg = 188 + climb * 14 + beat * (10 + climb * 20) + flapPulse * 22;
-  let wingLen = 34 + climb * 4;
-  if (tethered) {
-    wingDeg = 196 + beat * 4; // folded, being carried
-    wingLen = 20;
-  }
-  if (justReleased > 0) {
-    wingDeg += justReleased * 26; // snapped wide on the launch
-    wingLen += justReleased * 8;
-  }
-  if (tumbling > 0) {
-    wingDeg = 150;
-    wingLen = 22;
-  }
-
-  const squashY = 1 - justAttached * 0.14 + justReleased * 0.09;
-  const squashX = 1 + justAttached * 0.12 + justReleased * 0.05;
-  const whip = 1 + Math.min(1.3, speed / 750);
+  const whip = 1 + Math.min(1.1, speed / 800);
   const flow = (t: number) => spectrumAt(t - time * 0.4);
+
+  let wingDeg = 198 + climb * 14 + beat * (8 + climb * 16) + flapPulse * 18;
+  let wingLen = 22 + climb * 3;
+  if (tethered) { wingDeg = 208 + beat * 4; wingLen = 15; }
+  if (justReleased > 0) { wingDeg += justReleased * 22; wingLen += justReleased * 6; }
+  if (tumbling > 0) { wingDeg = 162; wingLen = 16; }
+
+  const squashY = 1 - justAttached * 0.12 + justReleased * 0.08;
+  const squashX = 1 + justAttached * 0.1 + justReleased * 0.04;
+
+  const SUIT = "#ffffff";
+  const SUIT_SHADE = "rgba(116,136,188,0.24)";
+  const SKIN = "#ffdcc0";
 
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(scale, scale);
-  ctx.rotate(prismLean(vx, vy, tumbling));
+  ctx.rotate(prismBodyAngle(pose));
   if (tumbling > 0) ctx.globalAlpha = 0.7 + 0.3 * Math.abs(Math.sin(tumbling * 30));
   ctx.scale(squashX, squashY);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  // ---------- Tail: spectrum, rooted at the croup ----------
-  for (let i = 0; i < 4; i++) {
-    const off = (i - 1.5) * 1.9;
-    const wob = Math.sin(time * 6.5 + i * 0.9) * 2.6 * whip;
-    ctx.strokeStyle = flow(i / 4);
-    ctx.lineWidth = 2.6 - i * 0.25;
+  const rad = (d: number) => (d * Math.PI) / 180;
+
+  // A rounded fabric wing rather than a feathered blade
+  const fabricWing = (deg: number, len: number, fill: string | CanvasGradient) => {
+    const a = rad(deg);
+    const tipX = Math.cos(a) * len;
+    const tipY = -6 + Math.sin(a) * len;
+    const midA = rad(deg + 26);
+    ctx.fillStyle = fill;
     ctx.beginPath();
-    ctx.moveTo(-15, -1 + off * 0.5);
-    ctx.quadraticCurveTo(-25 * whip, off + wob, (-36 - i * 2.5) * whip, off * 1.5 + wob);
-    ctx.stroke();
-  }
-
-  // ---------- Far wing, behind everything ----------
-  const wingRad = (deg: number) => (deg * Math.PI) / 180;
-  const farA = wingRad(wingDeg - 12);
-  ctx.fillStyle = "rgba(198,214,250,0.55)";
-  ctx.beginPath();
-  ctx.moveTo(0, -6);
-  ctx.lineTo(Math.cos(farA) * wingLen * 0.82, -6 + Math.sin(farA) * wingLen * 0.82);
-  ctx.lineTo(6, -9);
-  ctx.closePath();
-  ctx.fill();
-
-  // ---------- Legs: long, thin, posed. Front pair reaches, rear pair trails ----------
-  ctx.strokeStyle = "rgba(232,239,255,0.96)";
-  ctx.fillStyle = "rgba(232,239,255,0.96)";
-  const paddle = Math.sin(time * 12) * (0.45 + flapPulse * 0.7);
-  const tuck = tethered ? 0.9 : Math.max(climb * 0.85, 1 - dive * 0.95) * 0.75;
-  const legSpec: [number, number, number, number][] = [
-    // hipX, hipY, phase, length
-    [7, 4, 0, 8],
-    [4.5, 4.5, 2.3, 7.6],
-    [-9, 3, 1.2, 8.4],
-    [-12, 2.5, 3.4, 8],
-  ];
-  for (const [hx, hy, ph, len] of legSpec) {
-    const swing = paddle * 0.4 * Math.cos(ph);
-    const thigh = 1.5 - tuck * 1.35 + swing;
-    const shin = thigh + 0.7 + tuck * 1.25 - swing * 0.6;
-    leg(ctx, hx, hy, thigh, shin, len);
-  }
-
-  // ---------- Body: a rounded barrel ----------
-  const bodyPath = () => {
-    ctx.beginPath();
-    ctx.moveTo(11, -3); // chest
-    ctx.quadraticCurveTo(6, -10, -2, -9); // back, behind the withers
-    ctx.quadraticCurveTo(-12, -8, -16, -2); // croup
-    ctx.quadraticCurveTo(-18, 4, -11, 6); // haunch
-    ctx.quadraticCurveTo(-2, 9, 8, 6); // belly
-    ctx.quadraticCurveTo(12, 4, 11, -3); // back to chest
+    ctx.moveTo(-1, -6);
+    ctx.quadraticCurveTo(Math.cos(a) * len * 0.55 - 4, tipY * 0.55 - 5, tipX, tipY);
+    ctx.quadraticCurveTo(
+      Math.cos(midA) * len * 0.78,
+      -5 + Math.sin(midA) * len * 0.78,
+      2,
+      -3
+    );
     ctx.closePath();
-  };
-  const body = ctx.createLinearGradient(0, -10, 0, 9);
-  body.addColorStop(0, "#ffffff");
-  body.addColorStop(0.6, "#f4f7ff");
-  body.addColorStop(1, "#c6d2ef");
-  ctx.fillStyle = body;
-  bodyPath();
-  ctx.fill();
-
-  // ---------- Neck: the arch that makes it read as a horse ----------
-  const neck = ctx.createLinearGradient(4, -6, 22, -20);
-  neck.addColorStop(0, "#f7f9ff");
-  neck.addColorStop(1, "#ffffff");
-  ctx.fillStyle = neck;
-  ctx.beginPath();
-  ctx.moveTo(4, -7);
-  ctx.quadraticCurveTo(13, -13, 17, -21); // top line of the neck, arched
-  ctx.lineTo(24, -19);
-  ctx.quadraticCurveTo(18, -11, 11, -2); // underside
-  ctx.closePath();
-  ctx.fill();
-
-  // ---------- Head: a distinct wedge with a muzzle ----------
-  ctx.fillStyle = "#ffffff";
-  ctx.beginPath();
-  ctx.moveTo(17, -22); // poll
-  ctx.lineTo(29, -17); // bridge of the nose
-  ctx.lineTo(31, -13); // muzzle
-  ctx.lineTo(24, -13); // jaw
-  ctx.quadraticCurveTo(19, -15, 17, -22);
-  ctx.closePath();
-  ctx.fill();
-
-  // Ear
-  ctx.beginPath();
-  ctx.moveTo(18, -22);
-  ctx.lineTo(16.5, -28);
-  ctx.lineTo(21, -23);
-  ctx.closePath();
-  ctx.fill();
-
-  // Shadow facets: underside of the barrel and of the jaw
-  ctx.fillStyle = "rgba(116,136,188,0.3)";
-  ctx.beginPath();
-  ctx.moveTo(11, 0);
-  ctx.quadraticCurveTo(4, 8, -8, 6);
-  ctx.quadraticCurveTo(-16, 4, -16, -1);
-  ctx.quadraticCurveTo(-4, 3, 11, 0);
-  ctx.closePath();
-  ctx.fill();
-
-  // ---------- Mane: short tufts hugging the neck ----------
-  // Long sweeping strands read as a rainbow passing BEHIND her and merged visually with
-  // the tail, so the whole animal looked like it had a rainbow stuck through it. Short
-  // tufts that follow the neck's own curve read as hair.
-  for (let i = 0; i < 6; i++) {
-    const f = i / 5;
-    const wob = Math.sin(time * 9 + i * 1.3) * 1.5;
-    ctx.strokeStyle = flow(0.1 + f * 0.5);
-    ctx.lineWidth = 3.2 - f * 0.7;
-    // Along the neck's top line, from withers up to the poll
-    const sx = 5 + f * 12;
-    const sy = -8 - f * 13;
-    ctx.beginPath();
-    ctx.moveTo(sx, sy);
-    ctx.quadraticCurveTo(sx - 5, sy - 2.5 + wob, sx - 9 - f * 3, sy + 2.5 + wob);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.lineWidth = 1;
     ctx.stroke();
+  };
+
+  // ---------- Ribbons off the shoulders, undulating ----------
+  for (let i = 0; i < 3; i++) {
+    const off = (i - 1) * 2.1;
+    ribbon(
+      ctx, -3, -5 + off * 0.6, -1, 0.34,
+      (20 + i * 2) * whip, flow(i / 3), 2.6 - i * 0.35,
+      time, i * 1.5, 3.4 * whip, 1.6
+    );
   }
 
-  // ---------- Rim light along the top line, in the band's own colour ----------
-  ctx.strokeStyle = light;
-  ctx.lineWidth = 1.4;
-  ctx.globalAlpha *= 0.85;
+  // ---------- Far wing ----------
+  fabricWing(wingDeg - 15, wingLen * 0.86, "rgba(186,178,235,0.6)");
+
+  // ---------- Costume tail: a short spectrum tuft at the small of the back ----------
+  for (let i = 0; i < 3; i++) {
+    ribbon(
+      ctx, -4, 2.5 + i * 0.6, -1, 0.6,
+      13 + i, flow(0.4 + i / 6), 2.4,
+      time, i * 2.1, 2.2, 1.4
+    );
+  }
+
+  // ---------- Legs: short and chunky, with soft feet ----------
+  ctx.strokeStyle = SUIT;
+  ctx.fillStyle = SUIT;
+  const kick = Math.sin(time * 11) * (0.35 + flapPulse * 0.5);
+  const tuck = tethered ? 0.2 : Math.max(climb * 0.85, 1 - dive * 0.9) * 0.7;
+  for (const side of [-1, 1]) {
+    const sw = kick * 0.45 * side;
+    const hip = 1.571 - tuck * 1.1 + sw;
+    const shin = hip + 0.45 + tuck * 0.95 - sw * 0.6;
+    limb(ctx, side * 2, 5, hip, shin, 6, 5.2, 4);
+    // Foot
+    const kx = side * 2 + Math.cos(hip) * 6;
+    const ky = 5 + Math.sin(hip) * 6;
+    const fx = kx + Math.cos(shin) * 5.2;
+    const fy = ky + Math.sin(shin) * 5.2;
+    ctx.beginPath();
+    ctx.arc(fx, fy, 2.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ---------- Onesie torso ----------
+  const torso = ctx.createLinearGradient(0, -8, 0, 7);
+  torso.addColorStop(0, "#ffffff");
+  torso.addColorStop(1, "#cdd8f2");
+  ctx.fillStyle = torso;
   ctx.beginPath();
-  ctx.moveTo(-16, -2);
-  ctx.quadraticCurveTo(-8, -9, -2, -9);
-  ctx.quadraticCurveTo(6, -10, 4, -7);
-  ctx.quadraticCurveTo(13, -13, 17, -21);
-  ctx.lineTo(29, -17);
-  ctx.stroke();
+  ctx.moveTo(-5, -7);
+  ctx.quadraticCurveTo(-6.4, 0, -4.2, 5.6);
+  ctx.quadraticCurveTo(0, 7.4, 4.2, 5.6);
+  ctx.quadraticCurveTo(6.4, 0, 5, -7);
+  ctx.quadraticCurveTo(0, -8.8, -5, -7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = SUIT_SHADE;
+  ctx.beginPath();
+  ctx.moveTo(1, -7.8);
+  ctx.quadraticCurveTo(5.6, 0, 4.2, 5.6);
+  ctx.quadraticCurveTo(1.4, 6.8, 1, 5.6);
+  ctx.closePath();
+  ctx.fill();
+
+  // ---------- Pink tutu. Fab's daughter's costume has one, so Prism's does too ----------
+  const tutu = ctx.createLinearGradient(0, 2, 0, 10);
+  tutu.addColorStop(0, "#ffb3d4");
+  tutu.addColorStop(1, "#ff7fb8");
+  ctx.fillStyle = tutu;
+  // Two scalloped layers, so it reads as tulle rather than a solid skirt
+  for (const [spread, drop, alpha] of [[9.5, 9.5, 0.95], [7.4, 7, 1]] as [number, number, number][]) {
+    ctx.globalAlpha = tumbling > 0 ? alpha * 0.8 : alpha;
+    ctx.beginPath();
+    ctx.moveTo(-5.2, 2.6);
+    ctx.lineTo(-spread, drop);
+    // Scallops along the hem
+    const SCALLOPS = 4;
+    for (let i = 0; i < SCALLOPS; i++) {
+      const x0 = -spread + (2 * spread * i) / SCALLOPS;
+      const x1 = -spread + (2 * spread * (i + 1)) / SCALLOPS;
+      ctx.quadraticCurveTo((x0 + x1) / 2, drop + 2.6, x1, drop);
+    }
+    ctx.lineTo(5.2, 2.6);
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.globalAlpha = tumbling > 0 ? 0.7 + 0.3 * Math.abs(Math.sin(tumbling * 30)) : 1;
 
-  // ---------- Horn: a prism on the forehead, lit while the rope is out of it ----------
-  const horn = ctx.createLinearGradient(20, -22, 34, -33);
+  // ---------- Arms. Tethered: both up, gripping the rope ----------
+  ctx.strokeStyle = SUIT;
+  ctx.fillStyle = SKIN;
+  for (const side of [-1, 1]) {
+    let shoulderA: number, elbowA: number;
+    if (tethered) {
+      shoulderA = -1.571 + side * 0.17;
+      elbowA = -1.571 + side * 0.05;
+    } else if (dive > 0.35) {
+      shoulderA = -0.4 + side * 0.55;
+      elbowA = -0.15 + side * 0.6;
+    } else {
+      shoulderA = -1.15 + side * 0.5 - flapPulse * 0.28;
+      elbowA = -0.85 + side * 0.55;
+    }
+    limb(ctx, side * 3.6, -5.5, shoulderA, elbowA, 5.4, 5, 3.6);
+    // Bare hand at the end of the sleeve
+    const kx = side * 3.6 + Math.cos(shoulderA) * 5.4;
+    const ky = -5.5 + Math.sin(shoulderA) * 5.4;
+    ctx.beginPath();
+    ctx.arc(kx + Math.cos(elbowA) * 5, ky + Math.sin(elbowA) * 5, 1.9, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ---------- Hood, face, horn: the costume's whole personality ----------
+  // Hood shell, slightly larger than the head and set back
+  ctx.fillStyle = "#f3f6ff";
+  ctx.beginPath();
+  ctx.arc(-0.6, -13.6, 7.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Mane down the back of the hood
+  for (let i = 0; i < 4; i++) {
+    const f = i / 4;
+    ribbon(
+      ctx, -4.6, -18 + f * 4, -1, 0.85,
+      12 + f * 5, flow(0.05 + f * 0.5), 3 - f * 0.6,
+      time, i * 1.7, 2 * whip, 1.3
+    );
+  }
+
+  // Ears on the hood
+  ctx.fillStyle = "#f3f6ff";
+  for (const [ex, ey, r] of [[-3.6, -19.4, 2.1], [1.4, -20.4, 2.1]] as [number, number, number][]) {
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, r, r * 1.5, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // The face inside the hood — this is what makes it a child in a costume
+  ctx.fillStyle = SKIN;
+  ctx.beginPath();
+  ctx.arc(2.2, -12.8, 5.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hood brim across the brow
+  ctx.strokeStyle = "#dfe6f8";
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.arc(-0.6, -13.6, 7.2, rad(200), rad(348));
+  ctx.stroke();
+
+  // Horn, on the hood's brow
+  const horn = ctx.createLinearGradient(2, -19, 7, -28);
   horn.addColorStop(0, "#ffffff");
   horn.addColorStop(1, spectrumAt(time * 0.25));
   ctx.fillStyle = horn;
-  if (tethered) {
-    ctx.shadowColor = spectrumAt(time * 0.25);
-    ctx.shadowBlur = 14;
-  }
+  if (tethered) { ctx.shadowColor = spectrumAt(time * 0.25); ctx.shadowBlur = 11; }
   ctx.beginPath();
-  ctx.moveTo(19, -23);
-  ctx.lineTo(34, -33);
-  ctx.lineTo(23, -20);
+  ctx.moveTo(-0.4, -19.6);
+  ctx.lineTo(5.6, -28.4);
+  ctx.lineTo(3.6, -18.4);
   ctx.closePath();
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  // Eye — shuts to a line when she is stunned
-  ctx.strokeStyle = "rgba(38,42,68,0.9)";
-  ctx.fillStyle = "rgba(38,42,68,0.9)";
+  // Face: one eye, a cheek, and a small smile. Shut eye when stunned.
+  ctx.strokeStyle = "rgba(48,44,66,0.9)";
+  ctx.fillStyle = "rgba(48,44,66,0.9)";
   if (tumbling > 0) {
     ctx.lineWidth = 1.3;
     ctx.beginPath();
-    ctx.moveTo(21, -18.6);
-    ctx.lineTo(24.4, -17.6);
+    ctx.moveTo(3.2, -13.4);
+    ctx.lineTo(6, -13.4);
     ctx.stroke();
   } else {
     ctx.beginPath();
-    ctx.arc(22.6, -18.4, 1.15, 0, Math.PI * 2);
+    ctx.arc(4.6, -13.6, 1.15, 0, Math.PI * 2);
     ctx.fill();
-  }
-
-  // ---------- Near wing: three layered feather planes. Big wings are what read ----------
-  for (let i = 0; i < 3; i++) {
-    const a = wingRad(wingDeg + i * 13);
-    const len = wingLen - i * 6;
-    const g = ctx.createLinearGradient(2, -7, Math.cos(a) * len, -7 + Math.sin(a) * len);
-    g.addColorStop(0, "#ffffff");
-    g.addColorStop(1, i === 0 ? "rgba(226,236,255,0.9)" : "rgba(206,222,255,0.85)");
-    ctx.fillStyle = g;
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(2, -6);
-    ctx.lineTo(Math.cos(a) * len, -7 + Math.sin(a) * len);
-    ctx.lineTo(Math.cos(a + 0.3) * len * 0.72, -6 + Math.sin(a + 0.3) * len * 0.72);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.85)";
-    ctx.lineWidth = 0.9;
+    ctx.arc(4.2, -10.6, 2, rad(20), rad(120));
     ctx.stroke();
   }
+  ctx.fillStyle = "rgba(255,150,160,0.45)";
+  ctx.beginPath();
+  ctx.arc(6.4, -11.2, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Rim light along the leading edge, in the colour of the sky she is in
+  ctx.strokeStyle = light;
+  ctx.lineWidth = 1.3;
+  ctx.globalAlpha *= 0.75;
+  ctx.beginPath();
+  ctx.arc(-0.6, -13.6, 7.6, rad(-95), rad(45));
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(5, -7);
+  ctx.quadraticCurveTo(6.4, 0, 4.2, 5.6);
+  ctx.stroke();
+  ctx.globalAlpha = tumbling > 0 ? 0.7 + 0.3 * Math.abs(Math.sin(tumbling * 30)) : 1;
+
+  // ---------- Near wing ----------
+  const wg = ctx.createLinearGradient(0, -6, Math.cos(rad(wingDeg)) * wingLen, -6);
+  wg.addColorStop(0, "#f6f2ff");
+  wg.addColorStop(1, "rgba(206,196,248,0.95)");
+  fabricWing(wingDeg, wingLen, wg);
 
   ctx.restore();
 
-  // A ring of light on the launch, drawn unrotated so it stays circular
   if (justReleased > 0.05) {
     ctx.save();
     ctx.globalAlpha = justReleased * 0.5;
     ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(x, y, (1 - justReleased) * 50 * scale + 14, 0, Math.PI * 2);
+    ctx.arc(x, y, (1 - justReleased) * 44 * scale + 12, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
