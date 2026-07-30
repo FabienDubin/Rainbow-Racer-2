@@ -376,6 +376,141 @@ export function drawThundercloud(
   ctx.restore();
 }
 
+// A vertical current. Streaks race up or down through the band, tinted warm for a lift and
+// cold for a sink, so which kind it is reads from across the screen.
+export function drawGust(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  dir: number,
+  time: number
+): void {
+  const lift = dir > 0;
+  const tint = lift ? "255,238,190" : "150,180,255";
+  const left = x - width / 2;
+  ctx.save();
+
+  // Soft column, faded at both ends so it feels like air rather than a box
+  const g = ctx.createLinearGradient(0, y - height / 2, 0, y + height / 2);
+  g.addColorStop(0, `rgba(${tint},0)`);
+  g.addColorStop(0.5, `rgba(${tint},0.15)`);
+  g.addColorStop(1, `rgba(${tint},0)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(left, y - height / 2, width, height);
+
+  // Edges, so its extent is unmistakable — you have to be able to aim for it
+  ctx.strokeStyle = `rgba(${tint},0.4)`;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([7, 9]);
+  ctx.beginPath();
+  ctx.moveTo(left, y - height / 2);
+  ctx.lineTo(left, y + height / 2);
+  ctx.moveTo(left + width, y - height / 2);
+  ctx.lineTo(left + width, y + height / 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = `rgba(${tint},0.8)`;
+  ctx.lineCap = "round";
+  for (let i = 0; i < 9; i++) {
+    const lane = left + 12 + ((i * 47) % (width - 24));
+    const speed = 300 + (i % 3) * 150;
+    const len = 24 + (i % 4) * 14;
+    const span = height + len;
+    const raw = (time * speed + i * 71) % span;
+    const sy = lift ? y + height / 2 - raw : y - height / 2 + raw;
+    ctx.globalAlpha = 0.24 + ((i * 41) % 30) / 100;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(lane, sy);
+    ctx.lineTo(lane + Math.sin(time * 3 + i) * 2.5, sy + (lift ? len : -len));
+    ctx.stroke();
+  }
+
+  // Chevrons stacked up the column: which way it takes you, at a glance
+  ctx.globalAlpha = 0.65;
+  ctx.strokeStyle = `rgb(${tint})`;
+  ctx.lineWidth = 2.4;
+  for (const cy of [-height / 3, 0, height / 3]) {
+    ctx.beginPath();
+    ctx.moveTo(x - 7, y + cy + (lift ? 5 : -5));
+    ctx.lineTo(x, y + cy + (lift ? -5 : 5));
+    ctx.lineTo(x + 7, y + cy + (lift ? 5 : -5));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// A magpie. Asleep it is a dark silhouette; awake it opens its wings and comes for your
+// dust. It costs you what you have gathered rather than your life, which stings more.
+export function drawRaider(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  awake: boolean,
+  sated: boolean,
+  flap: number,
+  towardX: number
+): void {
+  const face = towardX >= 0 ? 1 : -1;
+  const beat = awake ? Math.sin(flap) : Math.sin(flap * 0.25) * 0.3;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(face, 1);
+  ctx.globalAlpha = sated ? 0.45 : 1;
+
+  // Wings behind
+  ctx.fillStyle = "#2a2740";
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(-1, -2);
+    ctx.quadraticCurveTo(-12, -8 + beat * 9 * side, -20, -3 + beat * 12 * side);
+    ctx.quadraticCurveTo(-11, 1 + beat * 5 * side, -1, 2);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Body and head
+  ctx.fillStyle = "#332f4d";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 11, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(8, -4, 4.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Beak, and a magpie's white flash on the flank
+  ctx.fillStyle = "#ffd166";
+  ctx.beginPath();
+  ctx.moveTo(11.5, -4);
+  ctx.lineTo(18, -2.6);
+  ctx.lineTo(11.5, -1.4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.82)";
+  ctx.beginPath();
+  ctx.ellipse(-2, 1.5, 5, 3, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eye: red and open once it has seen you
+  ctx.fillStyle = awake ? "#ff6b6b" : "rgba(255,255,255,0.55)";
+  ctx.beginPath();
+  ctx.arc(9.4, -5, 1.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tail
+  ctx.strokeStyle = "#2a2740";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-10, 0);
+  ctx.lineTo(-20, 3 + beat * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 // Le Grondement: a rising mass of storm with a turbulent lip, not a flat band. It is the
 // pacer of the whole game, so it has to feel like weather closing in.
 export function drawStorm(

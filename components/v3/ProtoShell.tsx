@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ProtoEngine, ProtoStats } from "@/game/v3/proto.engine";
 import ShopIcon from "./ShopIcon";
+import { audio } from "@/game/v3/audio";
 import {
   applyCard,
   buy,
@@ -39,6 +40,12 @@ export default function ProtoShell() {
   const [meta, setMeta] = useState<MetaState>(() => loadMeta());
   const [cards, setCards] = useState<LotteryCard[]>([]);
   const [picked, setPicked] = useState<number | null>(null);
+  const [muted, setMuted] = useState(false);
+
+  useEffect(() => {
+    audio.init();
+    setMuted(audio.muted);
+  }, []);
 
   useEffect(() => setMeta(loadMeta()), []);
   useEffect(() => () => engineRef.current?.destroy(), []);
@@ -135,6 +142,10 @@ export default function ProtoShell() {
           <dd>de plus en plus espacés ; les franchir repousse l&apos;orage</dd>
           <dt>Éclairs</dt>
           <dd>le nuage clignote, puis sa ligne frappe</dd>
+          <dt>Bourrasques</dt>
+          <dd>elles ne blessent pas, elles poussent — recalcule ton point de lâcher</dd>
+          <dt>Pilleurs</dt>
+          <dd>les pies volent ta poussière et brisent ta chaîne</dd>
         </dl>
         <p className="proto-aside-note">
           Tout est dessiné en vectoriel, généré à l&apos;image — Prism comprise. Sa crinière
@@ -144,6 +155,14 @@ export default function ProtoShell() {
 
       <div className="proto-stage">
         <canvas ref={canvasRef} className="proto-canvas" />
+
+        <button
+          className="proto-mute"
+          onClick={() => setMuted(audio.toggleMute())}
+          aria-label={muted ? "Activer le son" : "Couper le son"}
+        >
+          {muted ? "♪̶" : "♪"}
+        </button>
 
         {screen !== "playing" && (
           <div className="proto-overlay">
@@ -210,6 +229,11 @@ export default function ProtoShell() {
                   <li>
                     éclairs pris <b>{stats.hits}</b>
                   </li>
+                  {stats.stolen > 0 && (
+                    <li>
+                      volé par les pies <b>−{stats.stolen}</b>
+                    </li>
+                  )}
                   <li>
                     poussière <b>✦ {stats.dust}</b>
                   </li>

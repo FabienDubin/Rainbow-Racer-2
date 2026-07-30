@@ -436,3 +436,21 @@
 
 .sheet figcaption b { color: #fff; font-weight: 500; }
 .sheet figcaption span { color: rgba(207, 200, 230, 0.55); }
+
+.proto-mute {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  width: 34px;
+  height: 34px;
+  font-size: 1rem;
+  font-family: inherit;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(0, 0, 0, 0.28);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.proto-mute:hover { color: #fff; background: rgba(0, 0, 0, 0.45); }

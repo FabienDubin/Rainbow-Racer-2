@@ -47,6 +47,11 @@ hidden behind "it's a bit weird". Keep them running as the physics changes.
   Wrapping is for free flight only; when the rope was allowed the same shortcut you
   could grab something 590px away on the far side and get yanked bodily across.
 
+- **ablate.js** — turns each hazard off in isolation and reports the skill gradient with
+  and without it. This is how to tell a mechanic that rewards skill from one that merely
+  adds noise, and it caught a real mistake: a full-width sideways gust RAISED the careless
+  bot's altitude (76m -> 102m) while lowering the gradient (x1.68 -> x1.22). Random
+  perturbation always helps the worse player more.
 - **bolts.js** — the question that decides whether a hazard is a mechanic or just bad
   luck: does a player who READS the telegraph do measurably better than one who ignores
   it? First version of the bolt failed this outright (self-cycling, live 0.16s in 3s, so

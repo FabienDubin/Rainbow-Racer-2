@@ -202,3 +202,35 @@ export const DUST_LINE_PER_ROW = 2;
 export const DUST_BONUS_VALUE = 2;
 export const DUST_BONUS_CHANCE = 0.35; // rows that also get a bonus arc
 export const DUST_MAGNET_RADIUS = 150; // only with the Aimant consumable
+
+// ---- Les Courants ----
+// VERTICAL, not sideways. A lateral shove sounded good on paper but measured as pure noise:
+// with it, the careless bot's altitude went UP (76m -> 102m) and the skill gradient fell
+// from x1.68 to x1.14, because random perturbation always helps the worse player more.
+//
+// A vertical current is a positional CHOICE instead. An Ascendance lifts you and is worth
+// routing through; a Rabattant sinks you and is worth going around. Both are visible long
+// before you reach them, so a good line is rewarded and a careless one is punished — which
+// is the opposite of noise.
+export const GUST_START_M = 90;
+// COLUMNS, not full-width bands. A band spanning the whole screen offers no choice at all
+// — you cannot route around it — so its lift was an unconditional gift, and unconditional
+// gifts help careless play most (measured: the gradient fell to x1.22 either way). A column
+// you can enter or avoid is finally a decision.
+export const GUST_WIDTH = 150; // px across
+export const GUST_HEIGHT = 300; // px tall
+export const GUST_UP_FORCE = 520; // px/s² — near weightless inside an updraft
+export const GUST_DOWN_FORCE = 400; // px/s² of extra sink in a downdraft
+export const GUST_UP_CHANCE = 0.62; // updrafts are the commoner kind, so the net is a gift
+export const GUST_ROWS_APART = 4;
+
+// ---- Les Pilleurs ----
+// Magpies. They do not damage you: they steal dust and break your chain. Losing what you
+// have accumulated lands harder than losing a life, which is the strongest emotional lever
+// in the whole design — and it is a threat you can chase off by simply not being there.
+export const RAIDER_START_M = 160;
+export const RAIDER_ROWS_APART = 5;
+export const RAIDER_SPEED = 210; // px/s toward the player
+export const RAIDER_RANGE = 340; // px at which it wakes and starts hunting
+export const RAIDER_STEAL = 6; // dust taken per hit
+export const RAIDER_COOLDOWN = 2.2; // s before it can steal again

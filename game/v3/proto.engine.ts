@@ -14,10 +14,12 @@
 // World Y points UP. Screen conversion happens only at draw time.
 
 import { RunConfig } from "./meta";
+import { audio } from "./audio";
 import { skyAt, SkyState } from "./art/palette";
 import {
   Camera, drawAnchor, drawDustMote, drawGarlandGem, drawGarlandThread, drawParallax,
-  drawPalier, drawPrism, drawSky, drawStorm, drawTether, drawThundercloud, PrismPose,
+  drawGust, drawPalier, drawPrism, drawRaider, drawSky, drawStorm, drawTether,
+  drawThundercloud, PrismPose,
   prismGrip,
 } from "./art/draw";
 import {
@@ -29,6 +31,9 @@ import {
   ROW_SPACING, WRAP_MARGIN, BOLT_ARM_RANGE, BOLT_COOLDOWN, BOLT_ROWS_APART,
   BOLT_START_M, BOLT_STRIKE, BOLT_TELEGRAPH, BOLT_THICKNESS,
   CHECKPOINT_PUSHBACK, STUN_DROP, STUN_TIME, HIT_FLASH, HIT_SHAKE, HIT_STOP,
+  GUST_DOWN_FORCE, GUST_HEIGHT, GUST_ROWS_APART, GUST_START_M, GUST_UP_CHANCE, GUST_WIDTH,
+  GUST_UP_FORCE, RAIDER_COOLDOWN, RAIDER_RANGE,
+  RAIDER_ROWS_APART, RAIDER_SPEED, RAIDER_START_M, RAIDER_STEAL,
   CHECKPOINT_FIRST_M, CHECKPOINT_GROWTH, DUST_BONUS_CHANCE, DUST_BONUS_VALUE,
   DUST_LINE_PER_ROW, DUST_MAGNET_RADIUS, DUST_RADIUS,
   START_VY, STORM_ACCEL, STORM_SPEED_BASE, STORM_START_BELOW,
@@ -46,6 +51,20 @@ interface Bolt {
   y: number;
   state: BoltState;
   timer: number; // seconds spent in the current state
+}
+
+interface Gust {
+  x: number;
+  y: number;
+  dir: number; // +1 lifts (Ascendance), -1 sinks (Rabattant)
+}
+
+interface Raider {
+  x: number;
+  y: number;
+  awake: boolean;
+  cooldown: number;
+  flap: number; // wing phase
 }
 
 interface Dust {
@@ -70,6 +89,7 @@ export interface ProtoStats {
   flaps: number;
   slips: number; // releases with no real swing behind them
   hits: number; // times caught by a bolt
+  stolen: number; // dust taken by raiders
   checkpoints: number; // paliers crossed
   dust: number; // poussière collected — kept whatever happens
   pureFlight: boolean; // reached the end without a single flap
@@ -115,6 +135,12 @@ export class ProtoEngine {
   private dusts: Dust[] = [];
   private dustEarned = 0;
   private nextArcId = 1;
+  private gusts: Gust[] = [];
+  private raiders: Raider[] = [];
+  private rowsSinceGust = 0;
+  private rowsSinceRaider = 0;
+  private stolen = 0;
+  private inGust = 0; // -1/0/+1, for the HUD and the drawing
   private pickups: { x: number; y: number; text: string; life: number; big: boolean }[] = [];
   private talismanLeft = 0;
   private checkpoints = 0;
@@ -237,11 +263,13 @@ export class ProtoEngine {
   // ------------------------------------------------------------- lifecycle
   start(): void {
     this.attachInput();
+    audio.startMusic();
     this.lastTs = performance.now();
     this.rafId = requestAnimationFrame(this.frame);
   }
 
   destroy(): void {
+    audio.stopMusic();
     cancelAnimationFrame(this.rafId);
     this.detachFns.forEach((fn) => fn());
     this.detachFns = [];
@@ -366,6 +394,7 @@ export class ProtoEngine {
     this.anchors = this.anchors.filter((a) => a.y > this.camY - this.viewH);
 
     this.sky = skyAt(this.peakY / PX_PER_METER);
+    audio.setChain(this.chain);
 
     // ---- Poussière
     const magnetR = this.cfg.magnet ? DUST_MAGNET_RADIUS : DUST_RADIUS;
@@ -377,6 +406,7 @@ export class ProtoEngine {
         d.taken = true;
         this.dustEarned += d.value;
         // Naming the value teaches the difference between the two kinds by feel
+        audio.dust(this.chain + this.dustEarned, d.value > 1);
         this.pickups.push({
           x: d.x, y: d.y, text: `+${d.value}`, life: 0.6, big: d.value > 1,
         });
@@ -395,7 +425,46 @@ export class ProtoEngine {
       this.nextCheckpointM += this.checkpointGap;
       this.stormY -= CHECKPOINT_PUSHBACK;
       this.checkpointToast = 2.2;
+      audio.palier();
     }
+
+    // ---- Courants: vertical, so entering one is a choice rather than a perturbation
+    this.inGust = 0;
+    for (const g of this.gusts) {
+      if (
+        Math.abs(this.py - g.y) < GUST_HEIGHT / 2 &&
+        Math.abs(this.px - g.x) < GUST_WIDTH / 2
+      ) {
+        this.vy += g.dir * (g.dir > 0 ? GUST_UP_FORCE : GUST_DOWN_FORCE) * dt;
+        this.inGust = g.dir;
+      }
+    }
+    this.gusts = this.gusts.filter((g) => g.y > this.camY - this.viewH);
+
+    // ---- Pilleurs: they steal dust and break the chain
+    for (const r of this.raiders) {
+      r.cooldown = Math.max(0, r.cooldown - dt);
+      r.flap += dt * 12;
+      const dx = this.px - r.x;
+      const dy = this.py - r.y;
+      const dist = Math.hypot(dx, dy);
+      if (!r.awake && dist < RAIDER_RANGE) r.awake = true;
+      if (r.awake) {
+        r.x += (dx / (dist || 1)) * RAIDER_SPEED * dt;
+        r.y += (dy / (dist || 1)) * RAIDER_SPEED * dt;
+      }
+      if (dist < 30 && r.cooldown <= 0 && this.dustEarned > 0) {
+        const taken = Math.min(RAIDER_STEAL, this.dustEarned);
+        this.dustEarned -= taken;
+        this.stolen += taken;
+        this.chain = 0;
+        r.cooldown = RAIDER_COOLDOWN;
+        this.shake = Math.max(this.shake, 6);
+        audio.steal();
+        this.pickups.push({ x: r.x, y: r.y, text: `-${taken}`, life: 0.8, big: true });
+      }
+    }
+    this.raiders = this.raiders.filter((r) => r.y > this.camY - this.viewH);
 
     // ---- Éclairs
     this.updateBolts(dt);
@@ -458,6 +527,7 @@ export class ProtoEngine {
     a.used = true;
     this.ropeLen = Math.max(ROPE_MIN, Math.hypot(a.x - this.px, a.y - this.py));
     this.attaches++;
+    audio.grab();
     if (a.skip) this.skipsTaken++;
     this.reelLeft = WINCH_BUDGET * this.winchCharge;
     this.sweptAngle = 0;
@@ -522,6 +592,7 @@ export class ProtoEngine {
     this.flapCharges--;
     this.flaps++;
     this.flapPulse = 1;
+    audio.flap();
     this.flapTimer = FLAP_COOLDOWN;
     this.vy = Math.max(this.vy, 0) + FLAP_IMPULSE;
   }
@@ -666,6 +737,7 @@ export class ProtoEngine {
         this.hitFlash = HIT_FLASH;
         this.shake = HIT_SHAKE;
         this.hitStop = HIT_STOP;
+        audio.hit();
         if (this.anchor) this.release(true, false);
         // Order matters: the punishment lands after the detach, or the detach undoes it.
         this.chain = 0;
@@ -748,6 +820,39 @@ export class ProtoEngine {
         }
       }
 
+      // A band of side-wind across this stretch
+      this.rowsSinceGust++;
+      if (
+        this.generatedTo / PX_PER_METER > GUST_START_M &&
+        this.rowsSinceGust >= GUST_ROWS_APART &&
+        Math.random() < 0.5
+      ) {
+        this.rowsSinceGust = 0;
+        this.gusts.push({
+          // Offset from the anchor chain, so taking a current is a detour worth choosing
+          x: clampX(x + (Math.random() < 0.5 ? -1 : 1) * (110 + Math.random() * 120)),
+          y: this.generatedTo + ROW_SPACING * 0.4,
+          dir: Math.random() < GUST_UP_CHANCE ? 1 : -1,
+        });
+      }
+
+      // A magpie perched, waiting for someone carrying dust
+      this.rowsSinceRaider++;
+      if (
+        this.generatedTo / PX_PER_METER > RAIDER_START_M &&
+        this.rowsSinceRaider >= RAIDER_ROWS_APART &&
+        Math.random() < 0.55
+      ) {
+        this.rowsSinceRaider = 0;
+        this.raiders.push({
+          x: clampX(x + (Math.random() - 0.5) * 320),
+          y: this.generatedTo + ROW_SPACING * 0.7,
+          awake: false,
+          cooldown: 0,
+          flap: Math.random() * 6,
+        });
+      }
+
       // A thunderhead guarding this stretch. Never at the very first altitudes: the Arc
       // has to be learned before it is tested.
       if (
@@ -781,6 +886,7 @@ export class ProtoEngine {
 
   private end(): void {
     this.over = true;
+    audio.death();
     this.onEnd({
       altitudeM: Math.round(Math.max(0, this.peakY) / PX_PER_METER),
       bestChain: this.bestChain,
@@ -788,6 +894,7 @@ export class ProtoEngine {
       flaps: this.flaps,
       slips: this.slips,
       hits: this.hits,
+      stolen: this.stolen,
       checkpoints: this.checkpoints,
       dust: Math.round(this.dustEarned * this.cfg.dustFactor),
       pureFlight: this.flaps === 0,
@@ -813,7 +920,9 @@ export class ProtoEngine {
 
     this.drawCheckpoints(ctx);
     this.drawDust(ctx);
+    this.drawGusts(ctx);
     this.drawBolts(ctx);
+    this.drawRaiders(ctx);
     this.drawStreaks(ctx);
     this.drawStorm(ctx);
 
@@ -938,6 +1047,22 @@ export class ProtoEngine {
       if (sy < -70 || sy > this.viewH + 70) continue;
       const charge = b.state === "telegraph" ? Math.min(1, b.timer / BOLT_TELEGRAPH) : 0;
       drawThundercloud(ctx, b.x, sy, b.state, charge, VIEW_W, this.time);
+    }
+  }
+
+  private drawGusts(ctx: CanvasRenderingContext2D): void {
+    for (const g of this.gusts) {
+      const sy = this.screenY(g.y);
+      if (sy < -GUST_HEIGHT || sy > this.viewH + GUST_HEIGHT) continue;
+      drawGust(ctx, g.x, sy, GUST_WIDTH, GUST_HEIGHT, g.dir, this.time);
+    }
+  }
+
+  private drawRaiders(ctx: CanvasRenderingContext2D): void {
+    for (const r of this.raiders) {
+      const sy = this.screenY(r.y);
+      if (sy < -40 || sy > this.viewH + 40) continue;
+      drawRaider(ctx, r.x, sy, r.awake, r.cooldown > 0, r.flap, this.px - r.x);
     }
   }
 
