@@ -124,10 +124,15 @@ export const PX_PER_METER = 30;
 export const START_VY = 380; // initial toss so the first attach is immediate
 
 // ---- Sense of speed ----
-// With momentum preserved, speed is the thing the player is actually managing, so it
-// has to be legible: a trail behind you, streaks past you, and a camera that eases
-// back when you are moving fast.
-export const TRAIL_LENGTH = 22;
+// Speed should be *felt as acceleration*, not drawn as decoration. A clean release
+// therefore pays a real kick, scaled by how well it was aimed, so letting go at the
+// right moment is a burst you feel rather than a number you read.
+//
+// An unconditional release boost used to be the worst exploit in the build — tap-grab,
+// tap-release, free speed, forever. It is safe now only because a release that has not
+// swept a real arc is a "slip" and earns nothing at all, and because every release
+// forces a spell of free flight before you can grab again.
+export const RELEASE_KICK = 0.2; // +20% speed on a perfectly aimed release
 export const STREAK_MIN_SPEED = 380; // px/s before streaks appear
 export const STREAK_MAX_SPEED = 1100; // px/s where they are at full strength
 export const STREAK_COUNT = 14;

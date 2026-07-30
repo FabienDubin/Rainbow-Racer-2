@@ -20,7 +20,7 @@ import {
   ROW_SPACING,
   START_VY, STORM_ACCEL, STORM_SPEED_BASE, STORM_START_BELOW,
   STREAK_COUNT, STREAK_MAX_SPEED, STREAK_MIN_SPEED, SWING_PUMP, SWING_RECOVERY_DRIVE,
-  SWING_STALL_FLOOR, TETHER_RANGE, TRAIL_LENGTH, VIEW_H, VIEW_W, WHIP_RECOVERY,
+  SWING_STALL_FLOOR, RELEASE_KICK, TETHER_RANGE, VIEW_H, VIEW_W, WHIP_RECOVERY,
   WINCH_BUDGET, WINCH_FLOOR,
 } from "./proto.constants";
 
@@ -58,7 +58,6 @@ export class ProtoEngine {
   private attachTime = 0; // s on the current rung
   private attachLimit = MAX_ATTACH_TIME_LIFT; // set per grab: a dive earns a longer arc
   private divedOn = false; // did we grab an anchor that was below us?
-  private trail: { x: number; y: number }[] = [];
   private lastAngle = 0;
   private wasTaut = false; // was the rope taut last frame — gates the whip to the catch
   private whipFlash = 0; // visual feedback on a strong catch
@@ -218,10 +217,6 @@ export class ProtoEngine {
     if (this.py > this.peakY) this.peakY = this.py;
     if (this.peakY - this.py > CHAIN_DROP_TOLERANCE) this.chain = 0;
 
-    // ---- Trail: the cheapest, clearest read on how fast you are actually going
-    this.trail.push({ x: this.px, y: this.py });
-    if (this.trail.length > TRAIL_LENGTH) this.trail.shift();
-
     // ---- Camera rises only, never descends. It leans ahead when you are moving fast,
     // which both shows more of what is coming and sells the speed.
     const lookahead = Math.max(0, this.vy) * CAM_SPEED_LOOKAHEAD;
@@ -315,6 +310,12 @@ export class ProtoEngine {
     this.chain++;
     this.bestChain = Math.max(this.bestChain, this.chain);
     this.flapCharges = FLAP_CHARGES;
+
+    // The payoff you actually feel: a clean release accelerates you. Scaled by quality,
+    // so a well-aimed let-go is a kick and a scrappy one barely registers.
+    const kick = 1 + RELEASE_KICK * quality;
+    this.vx *= kick;
+    this.vy *= kick;
   }
 
   private flap(): void {
@@ -502,7 +503,6 @@ export class ProtoEngine {
     this.drawAltitudeGrid(ctx);
     this.drawStreaks(ctx);
     this.drawStorm(ctx);
-    this.drawTrail(ctx);
 
     // Anchors: hollow ring, filled once used. The one currently in range gets a halo
     // so the context-sensitive input is never a guess.
@@ -604,8 +604,14 @@ export class ProtoEngine {
   // managing — so it has to be felt, not just implied by the altitude counter.
   private drawStreaks(ctx: CanvasRenderingContext2D): void {
     const speed = Math.hypot(this.vx, this.vy);
-    if (speed < STREAK_MIN_SPEED) return;
-    const t = Math.min(1, (speed - STREAK_MIN_SPEED) / (STREAK_MAX_SPEED - STREAK_MIN_SPEED));
+    // The burst right after a release is what sells the kick, so streaks spike for a
+    // moment even below the usual speed threshold.
+    const burst = this.flashRelease;
+    if (speed < STREAK_MIN_SPEED && burst <= 0) return;
+    const t = Math.min(
+      1,
+      Math.max(0, (speed - STREAK_MIN_SPEED) / (STREAK_MAX_SPEED - STREAK_MIN_SPEED)) + burst * 0.55
+    );
     const ux = this.vx / speed;
     const uy = this.vy / speed;
     const psy = this.screenY(this.py);
@@ -628,25 +634,6 @@ export class ProtoEngine {
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
-  }
-
-  private drawTrail(ctx: CanvasRenderingContext2D): void {
-    if (this.trail.length < 2) return;
-    ctx.strokeStyle = "#fff";
-    ctx.lineCap = "round";
-    for (let i = 1; i < this.trail.length; i++) {
-      const a = this.trail[i - 1];
-      const b = this.trail[i];
-      const f = i / this.trail.length;
-      ctx.globalAlpha = f * 0.42;
-      ctx.lineWidth = 1 + f * 5;
-      ctx.beginPath();
-      ctx.moveTo(a.x, this.screenY(a.y));
-      ctx.lineTo(b.x, this.screenY(b.y));
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-    ctx.lineCap = "butt";
   }
 
   // Phase 0 storm: a hatched band. No art, but the pressure has to be legible.
