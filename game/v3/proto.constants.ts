@@ -225,7 +225,12 @@ export const GUST_WIDTH_MIN = 110;
 export const GUST_WIDTH_MAX = 260; // vs a 540px corridor: always room to go around
 export const GUST_HEIGHT_MIN = 360;
 export const GUST_HEIGHT_MAX = 760; // tall enough to be a real stretch of the climb
-export const GUST_UP_FORCE = 520; // px/s² — near weightless inside an updraft
+// An Ascendance does not fight gravity, it SUSPENDS it and then pushes. Inside one you are
+// weightless and accelerating; you ride it to the top and only recover normal dynamics on the
+// way out. Merely adding an upward force felt like nothing — this feels like being launched.
+export const GUST_UP_GRAVITY = 0.06; // fraction of gravity that still applies inside
+export const GUST_UP_ACCEL = 900; // px/s² of push
+export const GUST_UP_MAX = 880; // px/s ceiling, so it is a ride and not a rocket
 export const GUST_DOWN_FORCE = 400; // px/s² of extra sink in a downdraft
 export const GUST_UP_CHANCE = 0.62; // updrafts are the commoner kind, so the net is a gift
 export const GUST_ROWS_APART = 4;

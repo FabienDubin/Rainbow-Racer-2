@@ -1,10 +1,20 @@
 // Reactive audio, synthesised entirely in Web Audio — no files to load, nothing to wait
 // for, and it can respond to gameplay on the beat because the music IS the code.
 //
-// The idea worth the effort: the score is LAYERED, and the layers come in as your chain
-// grows. Struggling, you hear a bare pad. Chaining well, you hear pad, bass, arpeggio,
-// drums and finally a lead. Your performance becomes audible, which is a dopamine ladder
-// you climb with your ears — and nothing else in a browser game does it.
+// The score is LAYERED, and a layer arrives with every PALIER you cross. Altitude only ever
+// goes up, so the music only ever builds: by the top you are hearing the whole band, and the
+// climb has an audible arc.
+//
+// It was driven by the chain at first, which was wrong — a chain breaks the moment a bolt
+// catches you, so the music collapsed mid-run and the intensity told you nothing about how
+// far you had come.
+//
+// Voice: dreamy electronic, and the DREAMY half is the one to protect. Stacking six layers
+// and a thunderclap on top pulls naturally toward percussive and busy, so the choices below
+// deliberately pull the other way: three detuned pad voices with a slow attack, brushed
+// drums instead of a kit, triangles rather than squares, a generous feedback delay on
+// everything plucked, and a thunder that swells instead of cracking. Loud is easy; this is
+// supposed to feel like altitude, not like a drum machine.
 //
 // Everything is gated behind the first user gesture, per autoplay policy.
 
@@ -34,13 +44,15 @@ const PENTATONIC = [0, 2, 4, 7, 9];
 
 const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
 
-export type Layer = "pad" | "bass" | "arp" | "drums" | "lead";
-const LAYERS: Layer[] = ["pad", "bass", "arp", "drums", "lead"];
+export type Layer = "pad" | "bass" | "arp" | "drums" | "lead" | "shimmer";
+// Index order IS the order they arrive in, one per palier
+const LAYERS: Layer[] = ["pad", "bass", "arp", "drums", "lead", "shimmer"];
 
 export class GameAudio {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private busses = new Map<Layer, GainNode>();
+  private delayIn: GainNode | null = null;
   private noise: AudioBuffer | null = null;
 
   private timer: number | null = null;
@@ -75,10 +87,32 @@ export class GameAudio {
     master.connect(comp).connect(this.ctx.destination);
     this.master = master;
 
+    // A feedback delay in sync with the tempo. This one node is most of what makes the
+    // whole thing read as dreamy rather than as a chiptune.
+    const delay = this.ctx.createDelay(1.5);
+    delay.delayTime.value = BEAT * 0.75;
+    const fb = this.ctx.createGain();
+    fb.gain.value = 0.42;
+    const tone = this.ctx.createBiquadFilter();
+    tone.type = "lowpass";
+    tone.frequency.value = 2600;
+    const send = this.ctx.createGain();
+    send.gain.value = 1;
+    send.connect(delay);
+    delay.connect(tone).connect(fb).connect(delay);
+    tone.connect(master);
+    this.delayIn = send;
+
     for (const layer of LAYERS) {
       const g = this.ctx.createGain();
       g.gain.value = 0;
       g.connect(master);
+      // Plucked and bell-like voices go to the delay; pad, bass and drums stay dry
+      if (layer === "arp" || layer === "lead" || layer === "shimmer") {
+        const tap = this.ctx.createGain();
+        tap.gain.value = 0.7;
+        g.connect(tap).connect(send);
+      }
       this.busses.set(layer, g);
     }
 
@@ -127,18 +161,24 @@ export class GameAudio {
     }
   }
 
-  /** Chain length decides how much of the band is playing. */
-  setChain(chain: number): void {
-    const tier = chain >= 15 ? 4 : chain >= 10 ? 3 : chain >= 6 ? 2 : chain >= 3 ? 1 : 0;
+  /**
+   * One layer per palier crossed. Altitude only rises, so the arrangement only builds —
+   * which makes the music a record of how far you have come rather than of your last few
+   * seconds.
+   */
+  setPaliers(crossed: number): void {
+    const tier = Math.min(LAYERS.length - 1, crossed);
+    if (tier === this.targetTier) return;
     this.targetTier = tier;
     if (!this.ctx) return;
     LAYERS.forEach((layer, i) => {
       const g = this.busses.get(layer);
       if (!g) return;
-      const on = i === 0 || i <= tier;
-      const level = layer === "pad" ? 0.32 : layer === "drums" ? 0.26 : 0.22;
-      // Slow fades so layers arrive musically rather than snapping in
-      g.gain.setTargetAtTime(on ? level : 0, this.ctx!.currentTime, 0.5);
+      const on = i <= tier;
+      const level =
+        layer === "pad" ? 0.3 : layer === "drums" ? 0.16 : layer === "shimmer" ? 0.14 : 0.2;
+      // Slow fades so a layer arrives musically rather than snapping in
+      g.gain.setTargetAtTime(on ? level : 0, this.ctx!.currentTime, 1.1);
     });
   }
 
@@ -201,8 +241,14 @@ export class GameAudio {
 
     if (this.targetTier >= 3) {
       if (inBar === 0 || inBar === 8) this.kick(when);
-      if (inBar % 4 === 2) this.hat(when, 0.16);
+      if (inBar % 4 === 2) this.hat(when, 0.08);
       if (inBar === 12) this.snare(when);
+    }
+
+    if (this.targetTier >= 5 && inBar % 8 === 3) {
+      // High bells, two octaves up, well into the delay: the "we are very high now" sound
+      const deg = PENTATONIC[(step / 5) % PENTATONIC.length];
+      this.pluck(midi(root + 36 + deg), when, "shimmer", 0.16);
     }
 
     if (this.targetTier >= 4 && (inBar === 4 || inBar === 11)) {
@@ -223,13 +269,14 @@ export class GameAudio {
     // Two slightly detuned saws through a soft filter: the classic warm pad
     const g = ctx.createGain();
     g.gain.setValueAtTime(0, when);
-    g.gain.linearRampToValueAtTime(0.16 * level, when + 0.6);
+    g.gain.linearRampToValueAtTime(0.16 * level, when + 1.1);
     g.gain.setTargetAtTime(0, when + dur * 0.55, dur * 0.3);
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.value = 1400;
-    filter.Q.value = 0.6;
-    for (const detune of [-6, 6]) {
+    filter.frequency.value = 1250;
+    filter.Q.value = 0.5;
+    // Three voices, widely detuned: the beating between them IS the dreaminess
+    for (const detune of [-11, 0, 11]) {
       const o = ctx.createOscillator();
       o.type = "sawtooth";
       o.frequency.value = freq;
@@ -245,17 +292,31 @@ export class GameAudio {
     const ctx = this.ctx!;
     const bus = this.voice("bass");
     if (!bus) return;
+    // Saw through a filter with its own envelope: the electro bass sound, rather than a
+    // plain triangle, which read as chiptune
     const o = ctx.createOscillator();
-    o.type = "triangle";
+    o.type = "sawtooth";
     o.frequency.setValueAtTime(freq * 1.01, when);
     o.frequency.exponentialRampToValueAtTime(freq, when + 0.05);
+    const sub = ctx.createOscillator();
+    sub.type = "sine";
+    sub.frequency.value = freq / 2;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.Q.value = 7;
+    filter.frequency.setValueAtTime(freq * 7, when);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(90, freq * 1.6), when + 0.26);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, when);
-    g.gain.exponentialRampToValueAtTime(0.5, when + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.34);
-    o.connect(g).connect(bus);
+    g.gain.exponentialRampToValueAtTime(0.42, when + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.38);
+    o.connect(filter);
+    sub.connect(filter);
+    filter.connect(g).connect(bus);
     o.start(when);
-    o.stop(when + 0.4);
+    o.stop(when + 0.44);
+    sub.start(when);
+    sub.stop(when + 0.44);
   }
 
   private pluck(freq: number, when: number, layer: Layer, gain = 0.28): void {
@@ -278,19 +339,21 @@ export class GameAudio {
     const ctx = this.ctx!;
     const bus = this.voice("lead");
     if (!bus) return;
+    // Triangle, not square: a square lead is bright and cheap and cuts straight through the
+    // dream. The slow attack keeps it singing rather than plinking.
     const o = ctx.createOscillator();
-    o.type = "square";
+    o.type = "triangle";
     o.frequency.value = freq;
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.value = 2600;
+    filter.frequency.value = 1900;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, when);
-    g.gain.exponentialRampToValueAtTime(0.14, when + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.5);
+    g.gain.exponentialRampToValueAtTime(0.13, when + 0.09);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.8);
     o.connect(filter).connect(g).connect(bus);
     o.start(when);
-    o.stop(when + 0.55);
+    o.stop(when + 0.85);
   }
 
   private noiseBurst(when: number, dur: number, gain: number, type: BiquadFilterType, freq: number, layer: Layer): void {
@@ -310,28 +373,31 @@ export class GameAudio {
     src.stop(when + dur + 0.02);
   }
 
+  // A soft, round kick with a slower decay. A punchy one turned the whole thing into a
+  // dance track, which is not what this is.
   private kick(when: number): void {
     const ctx = this.ctx!;
     const bus = this.voice("drums");
     if (!bus) return;
     const o = ctx.createOscillator();
     o.type = "sine";
-    o.frequency.setValueAtTime(150, when);
-    o.frequency.exponentialRampToValueAtTime(46, when + 0.1);
+    o.frequency.setValueAtTime(115, when);
+    o.frequency.exponentialRampToValueAtTime(44, when + 0.16);
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.9, when);
-    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.22);
+    g.gain.setValueAtTime(0.5, when);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.34);
     o.connect(g).connect(bus);
     o.start(when);
-    o.stop(when + 0.25);
+    o.stop(when + 0.36);
   }
 
   private hat(when: number, gain: number): void {
-    this.noiseBurst(when, 0.045, gain, "highpass", 7500, "drums");
+    this.noiseBurst(when, 0.06, gain, "highpass", 9000, "drums");
   }
 
+  // A brushed swell rather than a snare crack: it marks the bar without puncturing the mood
   private snare(when: number): void {
-    this.noiseBurst(when, 0.14, 0.3, "bandpass", 1900, "drums");
+    this.noiseBurst(when, 0.3, 0.12, "bandpass", 1100, "drums");
   }
 
   // ------------------------------------------------------------------ SFX
@@ -359,6 +425,12 @@ export class GameAudio {
 
   private now(): number {
     return this.ctx ? this.ctx.currentTime : 0;
+  }
+
+  /** The root note currently under the arrangement, so events can land in key. */
+  private currentRoot(): number {
+    const table = this.mood === "aftermath" ? AFTERMATH : PROGRESSION;
+    return table[Math.floor(this.step / 16) % table.length].root;
   }
 
   grab(): void {
@@ -395,6 +467,102 @@ export class GameAudio {
     [0, 4, 7, 12].forEach((semi, i) =>
       this.blip(t + i * 0.07, midi(69 + semi), midi(69 + semi), 0.5, 0.15, "triangle")
     );
+  }
+
+  /**
+   * The telegraph, as sound. A rising tone on the current root: you can hear a bolt arming
+   * even while looking somewhere else, which matters a lot on a phone where the flash may
+   * be off in a corner of your eye.
+   */
+  boltCharge(seconds: number): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const bus = this.master;
+    if (!bus) return;
+    const t = this.now();
+    const root = midi(this.currentRoot() + 24);
+
+    const o = ctx.createOscillator();
+    o.type = "triangle";
+    // A fifth's worth of rise over the warning, so it reads as tension rather than a beep
+    o.frequency.setValueAtTime(root, t);
+    o.frequency.exponentialRampToValueAtTime(root * 1.5, t + seconds);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t + seconds * 0.85);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + seconds + 0.05);
+    o.connect(g).connect(bus);
+    o.start(t);
+    o.stop(t + seconds + 0.1);
+
+    // A noise sweep underneath, rising with it
+    const src = ctx.createBufferSource();
+    if (this.noise) {
+      src.buffer = this.noise;
+      src.loop = true;
+      const f = ctx.createBiquadFilter();
+      f.type = "bandpass";
+      f.Q.value = 3;
+      f.frequency.setValueAtTime(600, t);
+      f.frequency.exponentialRampToValueAtTime(4200, t + seconds);
+      const ng = ctx.createGain();
+      ng.gain.setValueAtTime(0.0001, t);
+      ng.gain.exponentialRampToValueAtTime(0.06, t + seconds * 0.9);
+      ng.gain.exponentialRampToValueAtTime(0.0001, t + seconds + 0.05);
+      src.connect(f).connect(ng).connect(bus);
+      src.start(t);
+      src.stop(t + seconds + 0.1);
+    }
+  }
+
+  /**
+   * The strike itself: a big musical moment rather than a noise. A sub drop on the current
+   * root plus a stab of the chord, so the thunder belongs to the track. If it caught you, a
+   * tritone goes on top and the whole thing sours.
+   */
+  boltStrike(caughtMe: boolean): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const bus = this.master;
+    if (!bus) return;
+    const t = this.now();
+    const root = this.currentRoot();
+
+    // Sub drop
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(midi(root + 12), t);
+    o.frequency.exponentialRampToValueAtTime(midi(root - 12), t + 0.5);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+    o.connect(g).connect(bus);
+    o.start(t);
+    o.stop(t + 0.75);
+
+    // The stab: in key, and soured with a tritone when it actually hit you
+    const stab = caughtMe ? [0, 6, 11] : [0, 7, 12];
+    for (const semi of stab) {
+      const so = ctx.createOscillator();
+      so.type = "sawtooth";
+      so.frequency.value = midi(root + 12 + semi);
+      const f = ctx.createBiquadFilter();
+      f.type = "lowpass";
+      // Swells in over 90ms and filters down: dramatic without a hard transient
+      f.frequency.setValueAtTime(2400, t);
+      f.frequency.exponentialRampToValueAtTime(420, t + 0.55);
+      const sg = ctx.createGain();
+      sg.gain.setValueAtTime(0.0001, t);
+      sg.gain.exponentialRampToValueAtTime(caughtMe ? 0.1 : 0.06, t + 0.09);
+      sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+      so.connect(f).connect(sg).connect(bus);
+      so.start(t);
+      so.stop(t + 0.5);
+    }
+
+    // The crack
+    this.noiseBurst(t, caughtMe ? 0.55 : 0.35, caughtMe ? 0.16 : 0.09, "bandpass", 1400, "pad");
   }
 
   hit(): void {

@@ -32,8 +32,9 @@ import {
   BOLT_START_M, BOLT_STRIKE, BOLT_TELEGRAPH, BOLT_THICKNESS,
   CHECKPOINT_PUSHBACK, STUN_DROP, STUN_TIME, HIT_FLASH, HIT_SHAKE, HIT_STOP,
   GUST_DOWN_FORCE, GUST_HEIGHT_MAX, GUST_HEIGHT_MIN, GUST_ROWS_APART, GUST_START_M,
+  GUST_UP_ACCEL, GUST_UP_GRAVITY, GUST_UP_MAX,
   GUST_UP_CHANCE, GUST_WIDTH_MAX, GUST_WIDTH_MIN,
-  GUST_UP_FORCE, RAIDER_RANGE,
+  RAIDER_RANGE,
   RAIDER_ROWS_APART, RAIDER_SPEED, RAIDER_START_M, RAIDER_STEAL,
   CHECKPOINT_FIRST_M, CHECKPOINT_GROWTH, DUST_BONUS_CHANCE, DUST_BONUS_VALUE,
   DUST_LINE_PER_ROW, DUST_MAGNET_RADIUS, DUST_RADIUS,
@@ -354,8 +355,28 @@ export class ProtoEngine {
     }
     if (this.releaseEdge && this.anchor) this.release();
 
+    // ---- Which current are we inside? This has to be known before gravity is applied,
+    // because an Ascendance suspends gravity rather than opposing it.
+    this.inGust = 0;
+    for (const g of this.gusts) {
+      if (Math.abs(this.py - g.y) < g.h / 2 && Math.abs(this.px - g.x) < g.w / 2) {
+        this.inGust = g.dir;
+      }
+    }
+
     // ---- Integrate
-    this.vy -= GRAVITY * dt;
+    // Weightless inside a lift — but only in free flight. Cutting gravity while roped would
+    // stop the pendulum being a pendulum, and the swing is the whole game.
+    const lifting = this.inGust > 0 && this.anchor === null;
+    this.vy -= GRAVITY * (lifting ? GUST_UP_GRAVITY : 1) * dt;
+    if (lifting) {
+      this.vy = Math.min(this.vy + GUST_UP_ACCEL * dt, GUST_UP_MAX);
+    } else if (this.inGust > 0) {
+      // Roped inside a lift: a plain upward push, so the arc survives
+      this.vy += GUST_UP_ACCEL * 0.4 * dt;
+    } else if (this.inGust < 0) {
+      this.vy -= GUST_DOWN_FORCE * dt;
+    }
     this.vy = Math.max(this.vy, -MAX_FALL_SPEED);
     this.vx *= 1 - AIR_DRAG * dt;
     this.px += this.vx * dt;
@@ -397,7 +418,7 @@ export class ProtoEngine {
     this.anchors = this.anchors.filter((a) => a.y > this.camY - this.viewH);
 
     this.sky = skyAt(this.peakY / PX_PER_METER);
-    audio.setChain(this.chain);
+    audio.setPaliers(this.checkpoints);
 
     // ---- Poussière
     const magnetR = this.cfg.magnet ? DUST_MAGNET_RADIUS : DUST_RADIUS;
@@ -432,14 +453,6 @@ export class ProtoEngine {
       haptic([12, 60, 12]);
     }
 
-    // ---- Courants: vertical, so entering one is a choice rather than a perturbation
-    this.inGust = 0;
-    for (const g of this.gusts) {
-      if (Math.abs(this.py - g.y) < g.h / 2 && Math.abs(this.px - g.x) < g.w / 2) {
-        this.vy += g.dir * (g.dir > 0 ? GUST_UP_FORCE : GUST_DOWN_FORCE) * dt;
-        this.inGust = g.dir;
-      }
-    }
     this.gusts = this.gusts.filter((g) => g.y > this.camY - this.viewH);
 
     // ---- Pilleurs: they steal dust and break the chain
@@ -728,11 +741,21 @@ export class ProtoEngine {
           if (below > 0 && below < BOLT_ARM_RANGE) {
             b.state = "telegraph";
             b.timer = 0;
+            audio.boltCharge(BOLT_TELEGRAPH);
           }
           break;
         }
         case "telegraph":
-          if (b.timer >= BOLT_TELEGRAPH) { b.state = "strike"; b.timer = 0; }
+          if (b.timer >= BOLT_TELEGRAPH) {
+            b.state = "strike";
+            b.timer = 0;
+            // Sound it now, and tell the music whether it landed on us
+            const willCatch =
+              this.stunTime <= 0 &&
+              this.talismanLeft <= 0 &&
+              Math.abs(this.py - b.y) < BOLT_THICKNESS / 2;
+            audio.boltStrike(willCatch);
+          }
           break;
         case "strike":
           if (b.timer >= BOLT_STRIKE) { b.state = "cooldown"; b.timer = 0; }
@@ -753,7 +776,6 @@ export class ProtoEngine {
         this.hitFlash = HIT_FLASH;
         this.shake = HIT_SHAKE;
         this.hitStop = HIT_STOP;
-        audio.hit();
         haptic([26, 40, 26]);
         if (this.anchor) this.release(true, false);
         // Order matters: the punishment lands after the detach, or the detach undoes it.
