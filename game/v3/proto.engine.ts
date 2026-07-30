@@ -515,9 +515,23 @@ export class ProtoEngine {
     const lag = (squeeze + this.breath) / this.cfg.stormFactor;
     this.stormY = Math.max(this.stormY, this.peakY - lag);
 
-    // ---- Fail: caught by the storm, or dropped off the bottom of the view
-    if (this.py < this.stormY) this.end();
-    if (this.screenY(this.py) > this.viewH + DEATH_MARGIN) this.end();
+    // ---- Fail: caught by the storm, or dropped off the bottom of the view.
+    //
+    // BOTH are gated on being free. Fab: "quand je suis sur une ancre et que ma trajectoire me
+    // fait passer sous le bas de l'écran, je meurs — vu que je suis attaché, normalement je
+    // devrais pouvoir continuer à vivre." He is right, and the conflict is mine: the trailing
+    // floor sits 520px under your peak, while diving onto a low anchor to convert the drop
+    // into height is a move he asked for and legitimately descends further than that. A rope
+    // that is about to swing you back up is a lifeline, so it suspends both deaths.
+    //
+    // This cannot be milked: MAX_ATTACH_TIME_DIVE force-releases you after 3.2s, and the
+    // mandatory free flight after every release means the grace always ends. Dipping into the
+    // cloud and being pulled out of it is the reward for aiming a dive; letting go down there
+    // still kills you.
+    if (this.anchor === null) {
+      if (this.py < this.stormY) this.end();
+      if (this.screenY(this.py) > this.viewH + DEATH_MARGIN) this.end();
+    }
   }
 
   // Horizontal distance the short way round the cylinder. Everything that reasons
