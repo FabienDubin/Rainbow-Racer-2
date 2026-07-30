@@ -3,7 +3,7 @@
 // Phase 0 harness. Deliberately ugly: the only thing being tested is the swing.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { VIEW_H, VIEW_W } from "@/game/v3/proto.constants";
+
 import { ProtoEngine, ProtoStats } from "@/game/v3/proto.engine";
 
 export default function ProtoShell() {
@@ -49,8 +49,34 @@ export default function ProtoShell() {
 
   return (
     <div className="proto-shell">
+      {/* Desktop surround: the play area is portrait, so wide screens get a backdrop
+          and a legend instead of dead black space either side. */}
+      <aside className="proto-aside">
+        <p className="proto-aside-title">Phase 0 — L&apos;Arc</p>
+        <dl className="proto-legend">
+          <dt>Appuyer</dt>
+          <dd>s&apos;accrocher à l&apos;ancre la plus proche</dd>
+          <dt>Maintenir</dt>
+          <dd>le treuil enroule, le pendule prend de la vitesse</dd>
+          <dt>Lâcher</dt>
+          <dd>catapulte le long de la tangente</dd>
+          <dt>Repères ⊥</dt>
+          <dd>là où ta vitesse pointe droit vers le haut</dd>
+          <dt>Plonger</dt>
+          <dd>arriver vite sur une ancre basse relance plus haut</dd>
+          <dt>Treuil</dt>
+          <dd>la qualité de ton dernier lâcher paie le suivant</dd>
+        </dl>
+        <p className="proto-aside-note">
+          Rectangles blancs sur fond noir&nbsp;: aucun habillage, pour ne juger que la
+          sensation du balancier.
+        </p>
+      </aside>
+
       <div className="proto-stage">
-        <canvas ref={canvasRef} width={VIEW_W} height={VIEW_H} className="proto-canvas" />
+        {/* No width/height props: the engine sizes the backing buffer from the real CSS
+            box so the view is never stretched. React must not fight it on re-render. */}
+        <canvas ref={canvasRef} className="proto-canvas" />
 
         {!running && (
           <div className="proto-overlay">

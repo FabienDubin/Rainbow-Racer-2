@@ -38,13 +38,51 @@ export const REF_RELEASE_SPEED = 640; // reference speed for scoring a release
 // not a bug. The drive MUST exceed gravity, or the swing stalls before the top and
 // there is no launch to time at all (measured: exit speed of 10px/s). It tops out
 // at a cap, and what stops "just hold on" from winning is the storm, not a weak rope.
-export const SWING_DRIVE = 1500; // px/s² tangential — must stay comfortably above GRAVITY
+// The drive is deliberately two-tier, because a single strong drive homogenised the
+// whole game: it topped every swing up to the same ceiling, so where your speed came
+// from stopped mattering and a dive bought nothing (measured: 0% gain below 900px/s).
+//
+//  below SWING_STALL_FLOOR → strong recovery, so a dead start or a bad fall is never
+//                            a soft lock and you can always do *something*
+//  above it                → a gentle pump only, so momentum you brought with you is
+//                            what decides how hard you launch
+export const SWING_RECOVERY_DRIVE = 1400; // px/s², below the stall floor
+// Zero on purpose. Any pump above the stall floor is a motor, and a motor drags every
+// swing toward the same ceiling — which is exactly what made a dive worthless and the
+// movement feel synthetic. With no motor the pendulum simply conserves what you bring
+// to it, so speed earned by falling is speed you still have on the way back up.
+//
+// Height is not lost when you trade it for speed: you bank it by catching a higher rung
+// at the top of the launch. That is the loop, and it needs no energy source beyond the
+// winch, which is bounded and paid for by your last release.
+export const SWING_PUMP = 0;
 export const SWING_STALL_FLOOR = 280; // minimum tangential speed kept, anti-dead-hang
-export const MAX_SWING_TANGENTIAL = 720; // ω = 720/145 ≈ 5 rad/s → ~70ms release window
-export const MAX_SWING_SPEED = 1100; // hard safety clamp on total speed
-export const MAX_ATTACH_TIME = 1.6; // s — the rope gives out. A swept-angle limit was
-                                    // wrong here: at 5 rad/s it fired in 0.3s, before
-                                    // the swing had spun up at all.
+// No longer a governor on the swing — only the reach of the recovery nudge. Clipping
+// tangential speed here confiscated momentum the player had genuinely earned.
+export const MAX_SWING_TANGENTIAL = 1400;
+export const MAX_SWING_SPEED = 1400; // hard safety clamp. Kept well above the drive's
+// own ceiling so speed *earned* by diving is never confiscated — that clamp was
+// quietly deleting the reward for a good dive.
+
+// How much of the speed killed by the rope going taut is whipped into the tangent.
+// 0 = the old behaviour (a dive buys you nothing), 1 = fully elastic (too springy).
+// Swept: 0.68 lost so much speed that a dive bought only 1.2m and the skill gradient
+// collapsed to x1.0. Keeping nearly all of it (0.95) is what makes momentum readable —
+// a dive is worth ~6m of extra launch height — while staying energy-honest, since a
+// pendulum still cannot return higher than it started.
+export const WHIP_RECOVERY = 0.95;
+// You always lose the grip eventually — but how long you keep it depends on where the
+// anchor was when you grabbed it, because the two grabs are different moves:
+//
+//   anchor ABOVE you → a lift. Short and snappy; hold, swing, go.
+//   anchor BELOW you → a dive. You need the whole arc: fall past it, through 6 o'clock,
+//                      and back up the far side to release around 9. One fixed short
+//                      timer tore the rope away mid-swing and killed this move entirely.
+//
+// A measured full swing is ~1.9s, so the dive limit allows one complete arc plus a
+// margin — enough to commit to the move, not enough to live on one rung.
+export const MAX_ATTACH_TIME_LIFT = 1.6;
+export const MAX_ATTACH_TIME_DIVE = 3.2;
 
 // ---- Le Grondement: the rising storm ----
 // This is the pacer that gives the verb its meaning. Absolute altitude is not the
@@ -84,3 +122,13 @@ export const PX_PER_METER = 30;
 
 // ---- Launch ----
 export const START_VY = 380; // initial toss so the first attach is immediate
+
+// ---- Sense of speed ----
+// With momentum preserved, speed is the thing the player is actually managing, so it
+// has to be legible: a trail behind you, streaks past you, and a camera that eases
+// back when you are moving fast.
+export const TRAIL_LENGTH = 22;
+export const STREAK_MIN_SPEED = 380; // px/s before streaks appear
+export const STREAK_MAX_SPEED = 1100; // px/s where they are at full strength
+export const STREAK_COUNT = 14;
+export const CAM_SPEED_LOOKAHEAD = 0.16; // how far ahead the camera leans, per px/s

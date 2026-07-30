@@ -21,5 +21,22 @@ node /tmp/proto-build/bot.js
   what caught the real bug: the winning strategy was staying attached 100% of the
   time, so a bad release never cost anything.
 
+- **arc.js** — rides one swing without ever releasing and prints the trajectory by
+  clock position (12 = above the anchor, 6 = below). Use it to check the grapple
+  survives a full dive arc instead of being torn away mid-swing.
+- **dive.js** — grab a ring BELOW you, fall past it, and measure how much extra launch
+  height the dive bought versus grabbing from a standstill.
+- **limits.js** — asserts the two grab types get different arc lengths and that the
+  grip is always eventually lost.
+- **whip.js / sweep.js** — parameter sweeps. Both tuning knobs trade one objective
+  against another, so they are swept rather than guessed: WHIP_RECOVERY trades momentum
+  retention against the skill gradient, and SWING_PUMP trades dive reward against
+  baseline playability.
+
 Each of these found a distinct design flaw that playtesting by feel would have
 hidden behind "it's a bit weird". Keep them running as the physics changes.
+
+A note on what the numbers can and cannot say: the bots are crude and do not chain
+momentum the way a person does, so treat the absolute altitudes as a floor. What they
+are genuinely good at is catching *ordering* bugs — a degenerate strategy quietly
+beating skilled play — which is exactly the class of problem that hides from feel.

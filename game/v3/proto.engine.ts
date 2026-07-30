@@ -14,11 +14,14 @@
 import {
   AIR_DRAG, CAM_FOLLOW_SPEED, CAM_PLAYER_SCREEN_FRAC, CHAIN_DROP_TOLERANCE,
   DEATH_MARGIN, FLAP_CHARGES, FLAP_COOLDOWN, FLAP_IMPULSE, GRAVITY, MAX_FALL_SPEED,
-  MAX_ATTACH_TIME, MAX_SWING_SPEED, MAX_SWING_TANGENTIAL, MIN_SWING_ANGLE, PX_PER_METER,
+  CAM_SPEED_LOOKAHEAD, MAX_ATTACH_TIME_DIVE, MAX_ATTACH_TIME_LIFT, MAX_SWING_SPEED,
+  MAX_SWING_TANGENTIAL, MIN_SWING_ANGLE, PX_PER_METER,
   GRAB_COOLDOWN, REEL_SPEED, REF_RELEASE_SPEED, REGRAB_LOCKOUT, ROPE_MIN, ROW_MARGIN_X,
   ROW_SPACING,
-  START_VY, STORM_ACCEL, STORM_SPEED_BASE, STORM_START_BELOW, SWING_DRIVE,
-  SWING_STALL_FLOOR, TETHER_RANGE, VIEW_H, VIEW_W, WINCH_BUDGET, WINCH_FLOOR,
+  START_VY, STORM_ACCEL, STORM_SPEED_BASE, STORM_START_BELOW,
+  STREAK_COUNT, STREAK_MAX_SPEED, STREAK_MIN_SPEED, SWING_PUMP, SWING_RECOVERY_DRIVE,
+  SWING_STALL_FLOOR, TETHER_RANGE, TRAIL_LENGTH, VIEW_H, VIEW_W, WHIP_RECOVERY,
+  WINCH_BUDGET, WINCH_FLOOR,
 } from "./proto.constants";
 
 interface Anchor {
@@ -53,7 +56,12 @@ export class ProtoEngine {
   private swingSign = 0; // which way the pendulum is being driven
   private sweptAngle = 0; // rad swept while taut — a real swing vs a spam tap
   private attachTime = 0; // s on the current rung
+  private attachLimit = MAX_ATTACH_TIME_LIFT; // set per grab: a dive earns a longer arc
+  private divedOn = false; // did we grab an anchor that was below us?
+  private trail: { x: number; y: number }[] = [];
   private lastAngle = 0;
+  private wasTaut = false; // was the rope taut last frame — gates the whip to the catch
+  private whipFlash = 0; // visual feedback on a strong catch
   private slips = 0; // releases that never earned a swing
   private lastReleased: Anchor | null = null;
   private regrabTimer = 0;
@@ -96,6 +104,12 @@ export class ProtoEngine {
   private lastTs = 0;
   private detachFns: (() => void)[] = [];
 
+  // Logical width is fixed; logical HEIGHT follows the real canvas box. Phones range
+  // from 16:9 to 20:9, and a fixed 540x960 buffer stretched into a taller box turned
+  // every swing circle into an ellipse — which quietly misreads the physics you are
+  // trying to feel. Taller screens now simply show more sky.
+  private viewH = VIEW_H;
+
   constructor(
     private canvas: HTMLCanvasElement,
     private onEnd: (stats: ProtoStats) => void
@@ -103,8 +117,14 @@ export class ProtoEngine {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D context unavailable");
     this.ctx = ctx;
-    this.camY = this.py + (0.5 - CAM_PLAYER_SCREEN_FRAC) * VIEW_H * -1;
-    this.generateUpTo(this.camY + VIEW_H * 1.5);
+
+    const boxW = canvas.clientWidth || VIEW_W;
+    const boxH = canvas.clientHeight || this.viewH;
+    this.viewH = Math.round(VIEW_W * (boxH / boxW));
+    canvas.width = VIEW_W;
+    canvas.height = this.viewH;
+    this.camY = this.py + (0.5 - CAM_PLAYER_SCREEN_FRAC) * this.viewH * -1;
+    this.generateUpTo(this.camY + this.viewH * 1.5);
   }
 
   // ------------------------------------------------------------- lifecycle
@@ -171,6 +191,7 @@ export class ProtoEngine {
     this.grabCooldown = Math.max(0, this.grabCooldown - dt);
     this.flashRelease = Math.max(0, this.flashRelease - dt * 3);
     this.flashAttach = Math.max(0, this.flashAttach - dt * 3);
+    this.whipFlash = Math.max(0, this.whipFlash - dt * 2.5);
 
     // ---- Input resolution: one press means "attach", or "flap" if nothing in range
     if (this.pressEdge) {
@@ -197,21 +218,27 @@ export class ProtoEngine {
     if (this.py > this.peakY) this.peakY = this.py;
     if (this.peakY - this.py > CHAIN_DROP_TOLERANCE) this.chain = 0;
 
-    // ---- Camera rises only, never descends
-    const camTarget = this.py + (CAM_PLAYER_SCREEN_FRAC - 0.5) * VIEW_H;
+    // ---- Trail: the cheapest, clearest read on how fast you are actually going
+    this.trail.push({ x: this.px, y: this.py });
+    if (this.trail.length > TRAIL_LENGTH) this.trail.shift();
+
+    // ---- Camera rises only, never descends. It leans ahead when you are moving fast,
+    // which both shows more of what is coming and sells the speed.
+    const lookahead = Math.max(0, this.vy) * CAM_SPEED_LOOKAHEAD;
+    const camTarget = this.py + (CAM_PLAYER_SCREEN_FRAC - 0.5) * this.viewH + lookahead;
     if (camTarget > this.camY) {
       this.camY += (camTarget - this.camY) * Math.min(1, CAM_FOLLOW_SPEED * dt);
     }
 
-    this.generateUpTo(this.camY + VIEW_H * 1.2);
-    this.anchors = this.anchors.filter((a) => a.y > this.camY - VIEW_H);
+    this.generateUpTo(this.camY + this.viewH * 1.2);
+    this.anchors = this.anchors.filter((a) => a.y > this.camY - this.viewH);
 
     // ---- Le Grondement rises, and accelerates
     this.stormY += (STORM_SPEED_BASE + STORM_ACCEL * this.time) * dt;
 
     // ---- Fail: caught by the storm, or dropped off the bottom of the view
     if (this.py < this.stormY) this.end();
-    if (this.screenY(this.py) > VIEW_H + DEATH_MARGIN) this.end();
+    if (this.screenY(this.py) > this.viewH + DEATH_MARGIN) this.end();
   }
 
   // Pick the best anchor in range: nearest, but strongly biased toward ones above us
@@ -227,8 +254,10 @@ export class ProtoEngine {
       const dy = a.y - this.py;
       const dist = Math.hypot(dx, dy);
       if (dist > TETHER_RANGE || dist < 30) continue;
-      // Reward height gained; a rope to an anchor below you is nearly always wrong
-      const score = dist - dy * 0.75;
+      // Still prefer height, but only mildly: now that a catch whips your dive speed
+      // into the swing, deliberately grabbing a ring below you and falling past it is
+      // a real tactic rather than a mistake, so it must stay selectable.
+      const score = dist - dy * 0.45;
       if (score < bestScore) {
         bestScore = score;
         best = a;
@@ -246,6 +275,11 @@ export class ProtoEngine {
     this.reelLeft = WINCH_BUDGET * this.winchCharge;
     this.sweptAngle = 0;
     this.attachTime = 0;
+    this.wasTaut = false;
+    // A dive (anchor below us) is a committed move and gets the whole arc; a lift
+    // (anchor above us) stays short and snappy.
+    this.divedOn = a.y < this.py;
+    this.attachLimit = this.divedOn ? MAX_ATTACH_TIME_DIVE : MAX_ATTACH_TIME_LIFT;
     this.lastAngle = Math.atan2(this.py - a.y, this.px - a.x);
     this.flashAttach = 1;
     // Drive the pendulum the way we're already travelling; fall back to our side
@@ -315,19 +349,40 @@ export class ProtoEngine {
     const dist = Math.hypot(dx, dy);
     if (dist < 0.001) return;
 
-    if (dist <= this.ropeLen) return; // slack rope: free fall, no forces
+    if (dist <= this.ropeLen) {
+      this.wasTaut = false; // slack rope: free fall, and the next catch can whip again
+      return;
+    }
 
     const nx = dx / dist;
     const ny = dy / dist;
     this.px = a.x + nx * this.ropeLen;
     this.py = a.y + ny * this.ropeLen;
 
-    // Kill outward radial velocity — the rope can pull, never push
+    // The rope can pull but never push, so outward radial velocity has to go.
+    // Zeroing it outright threw away everything you earned by diving: grab a ring
+    // below you, fall past it, and 100% of that speed was radial — destroyed on the
+    // spot. So on the CATCH (and only there) a share of it is whipped into the
+    // tangent instead, which is what makes a dive convert into a faster, higher swing.
+    //
+    // The edge check matters: while the rope stays taut, gravity produces an outward
+    // radial component every single frame, and converting that continuously would be
+    // a free motor — exactly the class of bug that made "never let go" unbeatable.
     const radial = this.vx * nx + this.vy * ny;
     if (radial > 0) {
       this.vx -= radial * nx;
       this.vy -= radial * ny;
+
+      if (!this.wasTaut) {
+        const rawTangential = this.vx * -ny + this.vy * nx;
+        const tSign = Math.sign(rawTangential) || this.swingSign;
+        this.vx += -ny * tSign * radial * WHIP_RECOVERY;
+        this.vy += nx * tSign * radial * WHIP_RECOVERY;
+        this.swingSign = tSign; // the dive decides which way we swing
+        this.whipFlash = Math.min(1, radial / 700);
+      }
     }
+    this.wasTaut = true;
 
     // Tangential drive — gated by the SAME charge as the winch. This is the keystone:
     // both the climb and the spin-up are paid for by the quality of your last release,
@@ -337,11 +392,13 @@ export class ProtoEngine {
     const tx = -ny * this.swingSign;
     const ty = nx * this.swingSign;
     const tangential = this.vx * tx + this.vy * ty;
-    const drive = SWING_DRIVE * (0.35 + 0.65 * this.winchCharge);
     const ceiling = Math.max(
       SWING_STALL_FLOOR,
       MAX_SWING_TANGENTIAL * (0.5 + 0.5 * this.winchCharge)
     );
+    // Recovery below the floor, gentle pump above it — see the constants for why.
+    const base = tangential < SWING_STALL_FLOOR ? SWING_RECOVERY_DRIVE : SWING_PUMP;
+    const drive = base * (0.35 + 0.65 * this.winchCharge);
     if (tangential < ceiling) {
       const add = Math.min(drive * dt, ceiling - tangential);
       this.vx += tx * add;
@@ -366,7 +423,7 @@ export class ProtoEngine {
     // The rope gives out after a fixed time. You get one swing per rung — so the
     // only question left is where in that arc you choose to let go.
     this.attachTime += dt;
-    if (this.attachTime >= MAX_ATTACH_TIME) this.release(true);
+    if (this.attachTime >= this.attachLimit) this.release(true);
   }
 
   // Anchors are generated as a *reachable chain*, not scattered at random.
@@ -433,24 +490,26 @@ export class ProtoEngine {
   }
 
   private screenY(worldY: number): number {
-    return VIEW_H / 2 - (worldY - this.camY);
+    return this.viewH / 2 - (worldY - this.camY);
   }
 
   // ------------------------------------------------------------------ draw
   private draw(): void {
     const ctx = this.ctx;
     ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.fillRect(0, 0, VIEW_W, this.viewH);
 
     this.drawAltitudeGrid(ctx);
+    this.drawStreaks(ctx);
     this.drawStorm(ctx);
+    this.drawTrail(ctx);
 
     // Anchors: hollow ring, filled once used. The one currently in range gets a halo
     // so the context-sensitive input is never a guess.
     const inRange = this.anchor ? null : this.pickAnchor();
     for (const a of this.anchors) {
       const sy = this.screenY(a.y);
-      if (sy < -40 || sy > VIEW_H + 40) continue;
+      if (sy < -40 || sy > this.viewH + 40) continue;
       ctx.strokeStyle = "#fff";
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -524,12 +583,12 @@ export class ProtoEngine {
 
   private drawAltitudeGrid(ctx: CanvasRenderingContext2D): void {
     const step = 10 * PX_PER_METER; // a line every 10 m gives a real sense of speed
-    const startM = Math.floor((this.camY - VIEW_H / 2) / step) * step;
+    const startM = Math.floor((this.camY - this.viewH / 2) / step) * step;
     ctx.strokeStyle = "rgba(255,255,255,0.09)";
     ctx.fillStyle = "rgba(255,255,255,0.28)";
     ctx.font = "11px ui-monospace, monospace";
     ctx.lineWidth = 1;
-    for (let y = startM; y < this.camY + VIEW_H / 2 + step; y += step) {
+    for (let y = startM; y < this.camY + this.viewH / 2 + step; y += step) {
       const sy = this.screenY(y);
       ctx.beginPath();
       ctx.moveTo(0, sy);
@@ -540,12 +599,62 @@ export class ProtoEngine {
     }
   }
 
+  // Speed streaks, aligned with travel and fading in above STREAK_MIN_SPEED. Now that
+  // momentum is conserved rather than motorised, speed is the resource the player is
+  // managing — so it has to be felt, not just implied by the altitude counter.
+  private drawStreaks(ctx: CanvasRenderingContext2D): void {
+    const speed = Math.hypot(this.vx, this.vy);
+    if (speed < STREAK_MIN_SPEED) return;
+    const t = Math.min(1, (speed - STREAK_MIN_SPEED) / (STREAK_MAX_SPEED - STREAK_MIN_SPEED));
+    const ux = this.vx / speed;
+    const uy = this.vy / speed;
+    const psy = this.screenY(this.py);
+
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < STREAK_COUNT; i++) {
+      // Deterministic scatter around the player so streaks do not strobe frame to frame
+      const seed = i * 2.399963;
+      const spread = 150 + ((i * 97) % 260);
+      const ox = Math.cos(seed) * spread;
+      const oy = Math.sin(seed * 1.7) * spread * 1.6 + ((this.time * 400 * (0.6 + (i % 4) * 0.2)) % 900) - 450;
+      const len = 26 + t * 90 * (0.5 + (i % 3) * 0.35);
+      const x = this.px + ox;
+      const y = psy + oy;
+      ctx.globalAlpha = t * 0.32;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - ux * len, y + uy * len);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  private drawTrail(ctx: CanvasRenderingContext2D): void {
+    if (this.trail.length < 2) return;
+    ctx.strokeStyle = "#fff";
+    ctx.lineCap = "round";
+    for (let i = 1; i < this.trail.length; i++) {
+      const a = this.trail[i - 1];
+      const b = this.trail[i];
+      const f = i / this.trail.length;
+      ctx.globalAlpha = f * 0.42;
+      ctx.lineWidth = 1 + f * 5;
+      ctx.beginPath();
+      ctx.moveTo(a.x, this.screenY(a.y));
+      ctx.lineTo(b.x, this.screenY(b.y));
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.lineCap = "butt";
+  }
+
   // Phase 0 storm: a hatched band. No art, but the pressure has to be legible.
   private drawStorm(ctx: CanvasRenderingContext2D): void {
     const sy = this.screenY(this.stormY);
     if (sy < -20) return;
     ctx.fillStyle = "rgba(255,255,255,0.10)";
-    ctx.fillRect(0, sy, VIEW_W, VIEW_H - sy + DEATH_MARGIN);
+    ctx.fillRect(0, sy, VIEW_W, this.viewH - sy + DEATH_MARGIN);
     ctx.strokeStyle = "rgba(255,255,255,0.7)";
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -554,10 +663,10 @@ export class ProtoEngine {
     ctx.stroke();
     ctx.strokeStyle = "rgba(255,255,255,0.22)";
     ctx.lineWidth = 1;
-    for (let x = -VIEW_H; x < VIEW_W; x += 26) {
+    for (let x = -this.viewH; x < VIEW_W; x += 26) {
       ctx.beginPath();
       ctx.moveTo(x, sy);
-      ctx.lineTo(x + VIEW_H, sy + VIEW_H);
+      ctx.lineTo(x + this.viewH, sy + this.viewH);
       ctx.stroke();
     }
     // Distance to the storm — the number the player actually plays against
@@ -600,19 +709,33 @@ export class ProtoEngine {
     ctx.fillStyle = "rgba(255,255,255,0.5)";
     ctx.fillText(`${Math.round(this.lastReleaseQuality * 100)}%`, 212, 116);
 
+    // Speed readout, and what kind of grab you are on — the arc length differs
+    const speed = Math.round(Math.hypot(this.vx, this.vy));
+    ctx.fillStyle = speed > STREAK_MIN_SPEED ? "#fff" : "rgba(255,255,255,0.5)";
+    ctx.fillText(`${speed} px/s`, 18, 140);
+    if (this.anchor) {
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      const left = Math.max(0, this.attachLimit - this.attachTime);
+      ctx.fillText(
+        `${this.divedOn ? "PLONGEON" : "PORTÉ"}  ${left.toFixed(1)}s`,
+        18,
+        160
+      );
+    }
+
     // Wing charges as pips, bottom left, in the thumb's eyeline
     for (let i = 0; i < FLAP_CHARGES; i++) {
       ctx.strokeStyle = "rgba(255,255,255,0.5)";
       ctx.lineWidth = 1.5;
-      ctx.strokeRect(18 + i * 20, VIEW_H - 40, 13, 13);
+      ctx.strokeRect(18 + i * 20, this.viewH - 40, 13, 13);
       if (i < this.flapCharges) {
         ctx.fillStyle = "#fff";
-        ctx.fillRect(20 + i * 20, VIEW_H - 38, 9, 9);
+        ctx.fillRect(20 + i * 20, this.viewH - 38, 9, 9);
       }
     }
 
     ctx.textAlign = "right";
     ctx.fillStyle = "rgba(255,255,255,0.4)";
-    ctx.fillText(this.anchor ? "ACCROCHÉ — lâche pour partir" : "appuie pour t'accrocher", VIEW_W - 18, VIEW_H - 30);
+    ctx.fillText(this.anchor ? "ACCROCHÉ — lâche pour partir" : "appuie pour t'accrocher", VIEW_W - 18, this.viewH - 30);
   }
 }
