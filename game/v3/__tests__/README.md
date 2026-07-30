@@ -58,6 +58,11 @@ hidden behind "it's a bit weird". Keep them running as the physics changes.
   and the value must be named on pickup. Exists because Fab reported seeing only one kind:
   a 3px dot and a 6px ring are indistinguishable in white on black, so the choice the
   bonus arcs were meant to pose never reached him.
+- **reach.js** — separates "hard because it takes skill" from "hard because the geometry
+  quietly excludes it". Bonus garlands sit at ROPE_MIN+55 while the winch reels you inward,
+  so this traces the swing radius and reports how long you spend in the garland's band per
+  grab distance. Verdict: a close grab never reaches one (0.00s), a distant grab does
+  (0.22s) — a real decision rather than luck.
 - **economy.js** — dust density per metre, then multiplied out across the three REAL run
   profiles Fab gave me (80m beginner, 147m relaxed, 650m serious). Prices are checked as
   "how many runs to afford this", per profile. Never price against bots: they top out at

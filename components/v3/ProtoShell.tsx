@@ -123,7 +123,12 @@ export default function ProtoShell() {
           <dd>arriver vite sur une ancre basse relance plus haut</dd>
           <dt>Poussière</dt>
           <dd>
-            les points suivent la route, les anneaux valent double mais sont hors ligne
+            les points suivent la route, les guirlandes valent double mais sont hors ligne
+          </dd>
+          <dt>Guirlandes</dt>
+          <dd>
+            s&apos;accrocher <b>de loin</b> garde la corde longue et les balaie ; de près
+            on monte mieux mais on les rate
           </dd>
           <dt>Paliers</dt>
           <dd>de plus en plus espacés ; les franchir repousse l&apos;orage</dd>
