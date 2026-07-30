@@ -514,3 +514,24 @@
   color: #ffd166;
   font-variant-numeric: tabular-nums;
 }
+
+.proto-claim {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+  width: min(320px, 92%);
+}
+
+.proto-claim p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.proto-claim-row {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.proto-claim-row .proto-name { flex: 1; width: auto; }

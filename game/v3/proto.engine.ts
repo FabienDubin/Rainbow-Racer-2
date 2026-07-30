@@ -280,12 +280,20 @@ export class ProtoEngine {
   }
 
   private attachInput(): void {
+    // Only a press that STARTED on the canvas counts. The release listener has to sit on
+    // the window so a finger sliding off the play area still lets go of the rope — but that
+    // meant tapping the mute button fired a release and dropped you off your tether.
+    let pressedOnCanvas = false;
+
     const down = (e: Event) => {
       e.preventDefault();
+      pressedOnCanvas = true;
       if (!this.pressed) this.pressEdge = true;
       this.pressed = true;
     };
     const up = () => {
+      if (!pressedOnCanvas) return;
+      pressedOnCanvas = false;
       if (this.pressed) this.releaseEdge = true;
       this.pressed = false;
     };

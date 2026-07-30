@@ -148,6 +148,27 @@ export default function ProtoShell() {
     [meta.consumables]
   );
 
+  // Claiming a name after the fact: save it, then submit the run that has just ended
+  const claimName = () => {
+    const name = nameDraft.trim();
+    if (!name || !stats) return;
+    audio.uiClick();
+    persist({ ...loadMeta(), name });
+    const score = runScore(stats);
+    if (score > 0) {
+      submitScore({
+        name,
+        score,
+        distance: stats.altitudeM,
+        maxCombo: stats.bestChain,
+      }).then((res) => {
+        if (!res) return;
+        setRank(res.rank);
+        setBoard(res.entries);
+      });
+    }
+  };
+
   // One place adds sound to a control, so no button can be forgotten
   const sfx = {
     onPointerEnter: () => audio.uiHover(),
@@ -346,6 +367,37 @@ export default function ProtoShell() {
 
                 {rank !== null && rank > 0 && (
                   <p className="proto-rank">#{rank} cette semaine</p>
+                )}
+
+                {/* The name used to be askable only on the menu, which you see exactly once
+                    — so anyone who skipped it there could never enter the board at all.
+                    Asking here, right after a score they cannot save, is the moment it
+                    actually means something. */}
+                {!meta.name && picked !== null && stats.altitudeM > 0 && (
+                  <div className="proto-claim">
+                    <p>Ton pseudo pour enregistrer ce score&nbsp;:</p>
+                    <div className="proto-claim-row">
+                      <input
+                        className="proto-name"
+                        type="text"
+                        maxLength={16}
+                        placeholder="pseudo"
+                        value={nameDraft}
+                        onChange={(e) => setNameDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") claimName();
+                        }}
+                      />
+                      <button
+                        className="proto-btn-ghost"
+                        {...sfx}
+                        onClick={claimName}
+                        disabled={!nameDraft.trim()}
+                      >
+                        Enregistrer
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {picked !== null && (

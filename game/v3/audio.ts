@@ -135,6 +135,9 @@ export class GameAudio {
     void this.resume();
     if (!this.ctx) return;
     this.mood = mood;
+    // Force the next setPaliers to apply: the aftermath mood overrides the layer gains
+    // directly, so without this a new run could start still wearing them.
+    this.targetTier = -1;
     if (mood === "aftermath") {
       this.targetTier = 0;
       // Only the pad and a sparse bass; deliberately thin
@@ -169,6 +172,7 @@ export class GameAudio {
   setPaliers(crossed: number): void {
     const tier = Math.min(LAYERS.length - 1, crossed);
     if (tier === this.targetTier) return;
+    if (this.mood === "aftermath") return; // the end screens own their own mix
     this.targetTier = tier;
     if (!this.ctx) return;
     LAYERS.forEach((layer, i) => {
