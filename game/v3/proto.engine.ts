@@ -47,6 +47,7 @@ interface Dust {
   y: number;
   value: number;
   taken: boolean;
+  arc: number; // 0 = line dust, >0 = id of the bonus garland it belongs to
 }
 
 interface Anchor {
@@ -107,6 +108,8 @@ export class ProtoEngine {
   private checkpointGap = CHECKPOINT_FIRST_M;
   private dusts: Dust[] = [];
   private dustEarned = 0;
+  private nextArcId = 1;
+  private pickups: { x: number; y: number; text: string; life: number; big: boolean }[] = [];
   private talismanLeft = 0;
   private checkpoints = 0;
   private checkpointToast = 0;
@@ -322,9 +325,16 @@ export class ProtoEngine {
       if (Math.hypot(dx, dy) < magnetR) {
         d.taken = true;
         this.dustEarned += d.value;
+        // Naming the value teaches the difference between the two kinds by feel
+        this.pickups.push({
+          x: d.x, y: d.y, text: `+${d.value}`, life: 0.6, big: d.value > 1,
+        });
+        if (this.pickups.length > 14) this.pickups.shift();
       }
     }
     this.dusts = this.dusts.filter((d) => !d.taken && d.y > this.camY - this.viewH);
+    for (const p of this.pickups) { p.life -= dt; p.y += 40 * dt; }
+    this.pickups = this.pickups.filter((p) => p.life > 0);
 
     // ---- Paliers: crossing one shoves the storm back down
     const altM = this.peakY / PX_PER_METER;
@@ -662,6 +672,7 @@ export class ProtoEngine {
           y: this.generatedTo - rise * ((i + 1) / (DUST_LINE_PER_ROW + 1)),
           value: 1,
           taken: false,
+          arc: 0,
         });
       }
 
@@ -669,6 +680,7 @@ export class ProtoEngine {
       // release sweeps it. Sometimes out in the wrap margin instead, which pays for
       // riding the edge.
       if (Math.random() < DUST_BONUS_CHANCE) {
+        const arcId = this.nextArcId++;
         const edge = Math.random() < 0.3;
         const cx = edge ? (Math.random() < 0.5 ? -70 : VIEW_W + 70) : x;
         const r = ROPE_MIN + 55;
@@ -679,6 +691,7 @@ export class ProtoEngine {
             y: this.generatedTo + (edge ? (i - 1.5) * 45 : Math.sin(a) * r * 0.8),
             value: DUST_BONUS_VALUE,
             taken: false,
+            arc: arcId,
           });
         }
       }
@@ -877,22 +890,69 @@ export class ProtoEngine {
   // Dust: a plain dot on the line, a ring for the valuable arcs so the two read apart
   // at a glance and you can decide whether the detour is worth it.
   private drawDust(ctx: CanvasRenderingContext2D): void {
+    // A bonus arc is drawn as a GARLAND: its pieces joined by a faint thread, so it reads
+    // as one object to sweep through rather than four loose specks. Fab could not tell the
+    // two kinds apart at all — "je vois que des poussières" — and you cannot choose to
+    // detour for something you cannot distinguish.
+    const arcs = new Map<number, Dust[]>();
+    for (const d of this.dusts) {
+      if (d.arc === 0) continue;
+      const list = arcs.get(d.arc);
+      if (list) list.push(d);
+      else arcs.set(d.arc, [d]);
+    }
+    for (const list of arcs.values()) {
+      if (list.length < 2) continue;
+      ctx.strokeStyle = "rgba(255,255,255,0.22)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      list.forEach((d, i) => {
+        const sy = this.screenY(d.y);
+        if (i === 0) ctx.moveTo(d.x, sy);
+        else ctx.lineTo(d.x, sy);
+      });
+      ctx.stroke();
+    }
+
     for (const d of this.dusts) {
       const sy = this.screenY(d.y);
       if (sy < -20 || sy > this.viewH + 20) continue;
       if (d.value > 1) {
-        ctx.strokeStyle = "rgba(255,255,255,0.85)";
+        // Pulsing halo so the eye is drawn to it well before it is in reach
+        const pulse = 0.5 + 0.5 * Math.sin(this.time * 4 + d.x * 0.05);
+        ctx.strokeStyle = `rgba(255,255,255,${0.16 + pulse * 0.24})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(d.x, sy, 11 + pulse * 3, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#fff";
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(d.x, sy, 6, 0, Math.PI * 2);
+        ctx.arc(d.x, sy, 6.5, 0, Math.PI * 2);
         ctx.stroke();
-      } else {
-        ctx.fillStyle = "rgba(255,255,255,0.6)";
+        ctx.fillStyle = "#fff";
         ctx.beginPath();
-        ctx.arc(d.x, sy, 3, 0, Math.PI * 2);
+        ctx.arc(d.x, sy, 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = "rgba(255,255,255,0.55)";
+        ctx.beginPath();
+        ctx.arc(d.x, sy, 2.5, 0, Math.PI * 2);
         ctx.fill();
       }
     }
+
+    // Floating values on pickup
+    ctx.textAlign = "center";
+    for (const p of this.pickups) {
+      ctx.globalAlpha = Math.min(1, p.life * 2.2);
+      ctx.fillStyle = "#fff";
+      ctx.font = `${p.big ? "bold 16px" : "12px"} ui-monospace, monospace`;
+      ctx.fillText(p.text, p.x, this.screenY(p.y));
+    }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = "left";
   }
 
   // The next palier, drawn as a line you can aim at. Seeing the reward coming is what

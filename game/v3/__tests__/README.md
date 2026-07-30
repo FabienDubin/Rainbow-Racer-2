@@ -54,6 +54,10 @@ hidden behind "it's a bit weird". Keep them running as the physics changes.
 - **phase1render.js** — asserts the palier lines and each bolt state actually draw, and
   that the strike lane hits inside and misses just outside.
 
+- **dustread.js** — the two kinds of dust must be tellable apart before you reach them,
+  and the value must be named on pickup. Exists because Fab reported seeing only one kind:
+  a 3px dot and a 6px ring are indistinguishable in white on black, so the choice the
+  bonus arcs were meant to pose never reached him.
 - **economy.js** — dust density per metre, then multiplied out across the three REAL run
   profiles Fab gave me (80m beginner, 147m relaxed, 650m serious). Prices are checked as
   "how many runs to afford this", per profile. Never price against bots: they top out at
