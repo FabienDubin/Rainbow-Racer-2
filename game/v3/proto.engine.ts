@@ -1,8 +1,10 @@
-// PHASE 0 — the verb, naked.
+// The playable prototype. Grown phase by phase in place — there is no separate build
+// to switch to.
 //
-// Purpose: answer one question honestly — is swinging on the Arc already fun
-// for three minutes with no art, no sound, no score juice? Nothing here is
-// meant to survive into the real game except the physics, which is the point.
+// Phase 0 (done): the verb, naked. Is swinging on the Arc already fun with no art, no
+//   sound and no score juice? Answered yes, after the harness found four design flaws.
+// Phase 1 (here): the run loop. Le Grondement rising from below, paliers that shove it
+//   back, and telegraphed thunderheads that cost you tempo rather than a life.
 //
 // Control (context-sensitive, one input):
 //   press  → attach to the best anchor in range; if none in range, flap

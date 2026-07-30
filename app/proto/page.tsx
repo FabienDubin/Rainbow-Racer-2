@@ -3,8 +3,8 @@ import ProtoShell from "@/components/v3/ProtoShell";
 import "./proto.css";
 
 export const metadata: Metadata = {
-  title: "Phase 0 — L'Arc",
-  description: "Prototype du verbe central de Rainbow Racer V3.",
+  title: "Phase 1 — L'Ascension",
+  description: "Prototype jouable de Rainbow Racer V3 : l'Arc, les paliers, les éclairs.",
 };
 
 export default function ProtoPage() {

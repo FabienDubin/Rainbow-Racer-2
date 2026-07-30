@@ -1,6 +1,7 @@
 "use client";
 
-// Phase 0 harness. Deliberately ugly: the only thing being tested is the swing.
+// Prototype harness. Deliberately ugly: what is being tested is the mechanics, not the
+// look. One page, growing phase by phase — there is nothing to switch between.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -52,7 +53,7 @@ export default function ProtoShell() {
       {/* Desktop surround: the play area is portrait, so wide screens get a backdrop
           and a legend instead of dead black space either side. */}
       <aside className="proto-aside">
-        <p className="proto-aside-title">Phase 0 — L&apos;Arc</p>
+        <p className="proto-aside-title">Phase 1 — L&apos;Ascension</p>
         <dl className="proto-legend">
           <dt>Appuyer</dt>
           <dd>s&apos;accrocher à l&apos;ancre la plus proche</dd>
@@ -72,8 +73,8 @@ export default function ProtoShell() {
           <dd>le nuage clignote, puis frappe sa ligne 0,45 s après</dd>
         </dl>
         <p className="proto-aside-note">
-          Rectangles blancs sur fond noir&nbsp;: aucun habillage, pour ne juger que la
-          sensation du balancier.
+          Rectangles blancs sur fond noir&nbsp;: aucun habillage, pour ne juger que les
+          mécaniques. Une seule page, qui grandit phase par phase.
         </p>
       </aside>
 
@@ -103,17 +104,18 @@ export default function ProtoShell() {
               </>
             ) : (
               <>
-                <p className="proto-title">PHASE 0<br />L&apos;ARC</p>
+                <p className="proto-title">PHASE 1<br />L&apos;ASCENSION</p>
                 <ul className="proto-rules">
                   <li><b>Appuie</b> près d&apos;une ancre pour t&apos;y accrocher</li>
                   <li><b>Maintiens</b> — la corde s&apos;enroule, tu montes</li>
                   <li><b>Lâche</b> au bon moment pour être catapulté</li>
                   <li>Loin de toute ancre, appuyer = un battement d&apos;ailes</li>
+                  <li><b>Palier</b> tous les 50 m&nbsp;: le franchir repousse l&apos;orage</li>
+                  <li><b>Éclair</b> dès 40 m&nbsp;: le nuage clignote, puis sa ligne frappe</li>
                 </ul>
                 <button className="proto-btn" onClick={start}>Commencer</button>
                 <p className="proto-note">
-                  Aucun habillage, c&apos;est voulu. La seule question&nbsp;: est-ce que
-                  se balancer est déjà amusant&nbsp;?
+                  Toujours sans habillage&nbsp;: on juge la mécanique, pas les graphismes.
                 </p>
               </>
             )}

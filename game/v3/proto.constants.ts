@@ -146,8 +146,11 @@ export const CAM_SPEED_LOOKAHEAD = 0.16; // how far ahead the camera leans, per 
 // The storm alone is a monotone squeeze. Checkpoints give the run a pulse: reach one and
 // it is shoved back down, which turns constant pressure into tension-then-relief and
 // gives you something to aim at other than "not dying".
-export const CHECKPOINT_EVERY_M = 150;
-export const CHECKPOINT_PUSHBACK = 560; // px the storm loses when you cross one
+// Spacing tuned against REAL runs, not bot runs. These were 150m apart because bots
+// reach 150-190m — but an actual player's run is 70-90m, so the first palier sat beyond
+// the end of nearly every game and the feature may as well not have existed.
+export const CHECKPOINT_EVERY_M = 50;
+export const CHECKPOINT_PUSHBACK = 260; // px the storm loses when you cross one
 
 // ---- PHASE 1: les Éclairs ----
 // Danger you read, not danger you're unlucky about: a thunderhead flashes, and only
@@ -160,7 +163,9 @@ export const CHECKPOINT_PUSHBACK = 560; // px the storm loses when you cross one
 // nothing (the "reader" bot actually took MORE hits than the one ignoring it). Arming on
 // approach means every thunderhead you meet is a real timing decision — rush the lane
 // before it fires, or hold back and let it pass.
-export const BOLT_START_M = 110; // no bolts before this altitude — room to learn the Arc
+// Same correction: at 110m the first thunderhead was past the end of a typical run.
+// 40m still leaves the opening quiet enough to learn the swing in peace.
+export const BOLT_START_M = 40;
 export const BOLT_ARM_RANGE = 430; // px below the lane at which it wakes up
 export const BOLT_TELEGRAPH = 0.5; // s of warning before the strike
 export const BOLT_STRIKE = 0.35; // s the lane is live — long enough that waiting costs you
