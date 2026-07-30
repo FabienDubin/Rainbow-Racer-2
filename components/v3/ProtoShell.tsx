@@ -10,6 +10,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ProtoEngine, ProtoStats } from "@/game/v3/proto.engine";
+import { skyAt } from "@/game/v3/art/palette";
+import { drawAnchor, drawDustMote, drawParallax, drawSky } from "@/game/v3/art/draw";
 import ShopIcon from "./ShopIcon";
 import { audio } from "@/game/v3/audio";
 import {
@@ -35,7 +37,9 @@ import {
   Upgrade,
 } from "@/game/v3/meta";
 
-type Screen = "menu" | "playing" | "lottery" | "shop";
+// The lottery gets a screen of its own. Cards, score, board and actions on one page made
+// the gamble just another widget in a stack; separated, picking a card is a moment.
+type Screen = "menu" | "playing" | "lottery" | "summary" | "shop" | "board";
 
 export default function ProtoShell() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -51,6 +55,12 @@ export default function ProtoShell() {
   const [rank, setRank] = useState<number | null>(null);
   const [shareLabel, setShareLabel] = useState("Partager");
   const [nameDraft, setNameDraft] = useState("");
+  // Keyboard hints are noise on a phone, where there is no Enter key to press
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    setIsTouch(window.matchMedia("(hover: none)").matches);
+  }, []);
+  const enterHint = isTouch ? null : <small>(Entrée)</small>;
 
   useEffect(() => {
     audio.init();
@@ -66,6 +76,60 @@ export default function ProtoShell() {
     fetchLeaderboard().then(setBoard);
   }, []);
   useEffect(() => () => engineRef.current?.destroy(), []);
+
+  // The menus used to sit on a black rectangle, which made the opening look unfinished.
+  // This drifts the actual world behind them — sky, hills, prisms, dust — climbing slowly
+  // through the altitude bands so you see what the game looks like before you press play.
+  useEffect(() => {
+    if (screen === "playing") return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const boxW = canvas.clientWidth || 540;
+    const boxH = canvas.clientHeight || 960;
+    const W = 540;
+    const H = Math.round(W * (boxH / boxW));
+    canvas.width = W;
+    canvas.height = H;
+
+    // A fixed scatter, so the backdrop is stable rather than sparkling randomly
+    const props = Array.from({ length: 22 }, (_, i) => ({
+      x: 40 + ((i * 137) % (W - 80)),
+      y: (i * 233) % 2400,
+      anchor: i % 3 === 0,
+      skip: i % 9 === 0,
+    }));
+
+    let raf = 0;
+    const t0 = performance.now();
+    const frame = (now: number) => {
+      const t = (now - t0) / 1000;
+      // A slow, endless climb through the bands
+      const camY = t * 90;
+      const sky = skyAt(camY / 30 + 40);
+      const cam = {
+        camY,
+        viewW: W,
+        viewH: H,
+        toScreen: (worldY: number) => H / 2 - (worldY - camY),
+      };
+      drawSky(ctx, cam, sky, t);
+      drawParallax(ctx, cam, sky);
+      for (const p of props) {
+        // Wrap each prop through a tall band so the field never runs out
+        const wrapped = ((p.y - camY) % 2400 + 2400) % 2400;
+        const sy = H / 2 - (wrapped - 1200);
+        if (sy < -40 || sy > H + 40) continue;
+        if (p.anchor) drawAnchor(ctx, p.x, sy, sky.light, false, false, p.skip, t);
+        else drawDustMote(ctx, p.x, sy, t);
+      }
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [screen]);
 
   const persist = useCallback((next: MetaState) => {
     setMeta(next);
@@ -128,6 +192,8 @@ export default function ProtoShell() {
     window.setTimeout(() => (cards[i].gift ? audio.giftFanfare() : audio.reward()), 180);
     // Cadence follows whether a gift was on the TABLE, not whether this card had it
     persist(applyCard(loadMeta(), cards[i], cards.some((c) => c.gift !== null)));
+    // Let the reveal land before moving on
+    window.setTimeout(() => setScreen("summary"), 1250);
   };
 
   // Enter advances the end-of-run flow, so "one more run" stays one key away
@@ -136,7 +202,8 @@ export default function ProtoShell() {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== "Enter") return;
       e.preventDefault();
-      if (screen === "lottery" && picked === null) return;
+      if (screen === "lottery") return; // the card pick is the only way past it
+      if (screen === "board") return;
       play();
     };
     window.addEventListener("keydown", onKey);
@@ -238,43 +305,23 @@ export default function ProtoShell() {
                   <br />
                   L&apos;ASCENSION
                 </p>
-                <ul className="proto-rules">
-                  <li>
-                    <b>Appuie</b> près d&apos;une ancre pour t&apos;y accrocher
-                  </li>
-                  <li>
-                    <b>Maintiens</b> — la corde s&apos;enroule, tu montes
-                  </li>
-                  <li>
-                    <b>Lâche</b> au bon moment pour être catapulté
-                  </li>
-                  <li>Loin de toute ancre, appuyer = un battement d&apos;ailes</li>
-                  <li>
-                    Ramasse la <b>poussière</b>, elle ne se perd jamais
-                  </li>
-                </ul>
-                <p className="proto-dust">
-                  <ShopIcon id="dust" size={18} /> {meta.dust} poussière
+                {/* One line, not five. Everything else is learnable by playing, and a wall
+                    of rules on the opening screen is the fastest way to not be played. */}
+                <p className="proto-pitch">
+                  Accroche-toi, balance-toi, lâche au bon moment.
+                  <br />
+                  Ramasse la poussière et grimpe avant l&apos;orage.
                 </p>
-                {meta.bestM > 0 && (
-                  <p className="proto-best">
-                    record : {meta.bestM} m · {meta.runs} runs
-                  </p>
-                )}
-                {armedNames.length > 0 && (
-                  <p className="proto-armed">équipé : {armedNames.join(" · ")}</p>
-                )}
-                {meta.modeRunsLeft > 0 && meta.mode && (
-                  <p className="proto-armed">
-                    mode {byId(meta.mode)?.name} — {meta.modeRunsLeft} run
-                    {meta.modeRunsLeft > 1 ? "s" : ""}
-                  </p>
-                )}
+
+                <p className="proto-dust">
+                  <ShopIcon id="dust" size={18} /> {meta.dust}
+                </p>
+
                 <input
                   className="proto-name"
                   type="text"
                   maxLength={16}
-                  placeholder="ton pseudo pour le classement"
+                  placeholder="ton pseudo"
                   value={nameDraft}
                   onChange={(e) => setNameDraft(e.target.value)}
                   onBlur={() => persist({ ...loadMeta(), name: nameDraft.trim() })}
@@ -287,125 +334,200 @@ export default function ProtoShell() {
                     play();
                   }}
                 >
-                  Commencer
+                  Jouer
                 </button>
-                {meta.dust > 0 && (
-                  <button className="proto-btn-ghost" onClick={() => setScreen("shop")} {...sfx}>
-                    Boutique
-                  </button>
+
+                {armedNames.length > 0 && (
+                  <p className="proto-armed">équipé : {armedNames.join(" · ")}</p>
                 )}
+                {meta.modeRunsLeft > 0 && meta.mode && (
+                  <p className="proto-armed">
+                    mode {byId(meta.mode)?.name} — {meta.modeRunsLeft} run
+                    {meta.modeRunsLeft > 1 ? "s" : ""}
+                  </p>
+                )}
+
+                <div className="proto-actions-row">
+                  {meta.dust > 0 && (
+                    <button
+                      className="proto-btn-ghost"
+                      onClick={() => setScreen("shop")}
+                      {...sfx}
+                    >
+                      Boutique
+                    </button>
+                  )}
+                  {board.length > 0 && (
+                    <button
+                      className="proto-btn-ghost"
+                      onClick={() => setScreen("board")}
+                      {...sfx}
+                    >
+                      Classement
+                    </button>
+                  )}
+                </div>
+
                 {board.length > 0 && (
-                  <div className="proto-board">
-                    <h4>Classement de la semaine</h4>
-                    <ol>
-                      {board.slice(0, 5).map((e, i) => (
-                        <li key={i} className={e.name === meta.name ? "me" : ""}>
-                          <span className="rk">{i + 1}</span>
-                          <span className="nm">{e.name}</span>
-                          <span className="sc">{e.score.toLocaleString("fr-FR")}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
+                  <ol className="proto-podium proto-podium--menu">
+                    {board.slice(0, 3).map((e, i) => (
+                      <li key={i} className={e.name === meta.name ? "me" : ""}>
+                        <span className="rk">{i + 1}</span>
+                        <span className="nm">{e.name}</span>
+                        <span className="sc">{e.score.toLocaleString("fr-FR")}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {meta.bestM > 0 && (
+                  <p className="proto-best">
+                    record perso : {meta.bestM} m · {meta.runs} runs
+                  </p>
                 )}
               </>
             )}
 
             {screen === "lottery" && stats && (
               <>
-                <p className="proto-alt">{stats.altitudeM} m</p>
-                <ul className="proto-stats">
-                  <li>
-                    paliers <b>{stats.checkpoints}</b>
-                  </li>
-                  <li>
-                    chaîne max <b>{stats.bestChain}</b>
-                  </li>
-                  <li>
-                    éclairs pris <b>{stats.hits}</b>
-                  </li>
-                  {stats.stolen > 0 && (
-                    <li>
-                      volé par les pies <b>−{stats.stolen}</b>
-                    </li>
-                  )}
-                  <li>
-                    poussière <b>✦ {stats.dust}</b>
-                  </li>
-                  <li>
-                    temps <b>{stats.timeSurvived}s</b>
-                  </li>
-                </ul>
-
-                <p className="proto-lottery-title">
-                  {picked === null ? "Choisis une carte" : "Les trois cartes"}
-                </p>
-                <div className="proto-cards">
-                  {cards.map((c, i) => (
-                    <button
-                      key={i}
-                      className={`proto-card${picked === i ? " picked" : ""}${
-                        picked !== null ? " revealed" : ""
-                      }`}
-                      onClick={() => pickCard(i)}
-                      onPointerEnter={() => picked === null && audio.uiHover()}
-                      disabled={picked !== null}
-                    >
-                      {picked === null ? (
-                        <span className="proto-card-back">?</span>
-                      ) : (
-                        <>
-                          <span className="proto-card-dust">✦ {c.dust}</span>
-                          {c.gift && (
-                            <span className="proto-card-gift">+ {byId(c.gift)?.name}</span>
-                          )}
-                        </>
-                      )}
-                    </button>
-                  ))}
-                </div>
-
-                {rank !== null && rank > 0 && (
-                  <p className="proto-rank">#{rank} cette semaine</p>
-                )}
-
-                {/* The name used to be askable only on the menu, which you see exactly once
-                    — so anyone who skipped it there could never enter the board at all.
-                    Asking here, right after a score they cannot save, is the moment it
-                    actually means something. */}
-                {!meta.name && picked !== null && stats.altitudeM > 0 && (
-                  <div className="proto-claim">
-                    <p>Ton pseudo pour enregistrer ce score&nbsp;:</p>
-                    <div className="proto-claim-row">
-                      <input
-                        className="proto-name"
-                        type="text"
-                        maxLength={16}
-                        placeholder="pseudo"
-                        value={nameDraft}
-                        onChange={(e) => setNameDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") claimName();
-                        }}
-                      />
+                <section className="proto-sec proto-sec--tall">
+                  <h3>{picked === null ? "Choisis une carte" : ""}</h3>
+                  <div className="proto-cards">
+                    {cards.map((c, i) => (
                       <button
-                        className="proto-btn-ghost"
-                        {...sfx}
-                        onClick={claimName}
-                        disabled={!nameDraft.trim()}
+                        key={i}
+                        className={`proto-card${picked === i ? " picked" : ""}${
+                          picked !== null ? " revealed" : ""
+                        }`}
+                        onClick={() => pickCard(i)}
+                        onPointerEnter={() => picked === null && audio.uiHover()}
+                        disabled={picked !== null}
                       >
-                        Enregistrer
+                        {picked === null ? (
+                          <span className="proto-card-back">?</span>
+                        ) : (
+                          <>
+                            <span className="proto-card-dust">✦ {c.dust}</span>
+                            {c.gift && (
+                              <span className="proto-card-gift">+ {byId(c.gift)?.name}</span>
+                            )}
+                          </>
+                        )}
                       </button>
-                    </div>
+                    ))}
                   </div>
-                )}
+                  {picked === null && (
+                    <p className="proto-empty">Une seule. Les trois se révèlent ensuite.</p>
+                  )}
+                </section>
+              </>
+            )}
 
-                {picked !== null && (
-                  <div className="proto-actions">
-                    <button className="proto-btn" onClick={play} {...sfx}>
-                      Rejouer <small>(Entrée)</small>
-                    </button>
-                    <button className="proto-btn-ghost" onClick={() => setScreen("shop")} {...sfx}>
+            {screen === "summary" && stats && (
+              <>
+                <section className="proto-sec">
+                  <h3>Ta montée</h3>
+                  <p className="proto-alt">{stats.altitudeM} m</p>
+                  <ul className="proto-stats">
+                    <li>
+                      paliers <b>{stats.checkpoints}</b>
+                    </li>
+                    <li>
+                      chaîne max <b>{stats.bestChain}</b>
+                    </li>
+                    <li>
+                      éclairs pris <b>{stats.hits}</b>
+                    </li>
+                    {stats.stolen > 0 && (
+                      <li>
+                        volé par les pies <b>−{stats.stolen}</b>
+                      </li>
+                    )}
+                    <li>
+                      poussière <b>✦ {stats.dust}</b>
+                    </li>
+                  </ul>
+                </section>
+
+                <section className="proto-sec">
+                  <h3>Classement de la semaine</h3>
+
+                  {!meta.name && stats.altitudeM > 0 ? (
+                    <div className="proto-claim">
+                      <p>Ton pseudo pour enregistrer ce score&nbsp;:</p>
+                      <div className="proto-claim-row">
+                        <input
+                          className="proto-name"
+                          type="text"
+                          maxLength={16}
+                          placeholder="pseudo"
+                          value={nameDraft}
+                          onChange={(e) => setNameDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") claimName();
+                          }}
+                        />
+                        <button
+                          className="proto-btn-ghost"
+                          {...sfx}
+                          onClick={claimName}
+                          disabled={!nameDraft.trim()}
+                        >
+                          Enregistrer
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {rank !== null && rank > 0 && (
+                        <p className="proto-rank">#{rank} cette semaine</p>
+                      )}
+                      {board.length > 0 ? (
+                        <>
+                          <ol className="proto-podium">
+                            {board.slice(0, 3).map((e, i) => (
+                              <li key={i} className={e.name === meta.name ? "me" : ""}>
+                                <span className="rk">{i + 1}</span>
+                                <span className="nm">{e.name}</span>
+                                <span className="sc">{e.score.toLocaleString("fr-FR")}</span>
+                              </li>
+                            ))}
+                            {rank !== null && rank > 3 && (
+                              <li className="me apart">
+                                <span className="rk">{rank}</span>
+                                <span className="nm">{meta.name}</span>
+                                <span className="sc">
+                                  {(board[rank - 1]?.score ?? 0).toLocaleString("fr-FR")}
+                                </span>
+                              </li>
+                            )}
+                          </ol>
+                          <button
+                            className="proto-board-more"
+                            {...sfx}
+                            onClick={() => setScreen("board")}
+                          >
+                            voir tout le classement
+                          </button>
+                        </>
+                      ) : (
+                        <p className="proto-empty">
+                          Personne cette semaine. La place est à prendre.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </section>
+
+                <section className="proto-sec proto-actions">
+                  <button className="proto-btn" onClick={play} {...sfx}>
+                    Rejouer {enterHint}
+                  </button>
+                  <div className="proto-actions-row">
+                    <button
+                      className="proto-btn-ghost"
+                      onClick={() => setScreen("shop")}
+                      {...sfx}
+                    >
                       Boutique · ✦ {meta.dust}
                     </button>
                     <button
@@ -418,7 +540,11 @@ export default function ProtoShell() {
                           ". Tu me bats ? 🌈";
                         try {
                           if (navigator.share) {
-                            await navigator.share({ title: "Rainbow Racer", text, url: location.href });
+                            await navigator.share({
+                              title: "Rainbow Racer",
+                              text,
+                              url: location.href,
+                            });
                           } else {
                             await navigator.clipboard.writeText(`${text} ${location.href}`);
                             setShareLabel("Copié");
@@ -432,10 +558,44 @@ export default function ProtoShell() {
                       {shareLabel}
                     </button>
                   </div>
-                )}
+                </section>
               </>
             )}
 
+
+            {screen === "board" && (
+              <>
+                <section className="proto-sec">
+                  <h3>Classement de la semaine</h3>
+                  {board.length > 0 ? (
+                    <ol className="proto-fullboard">
+                      {board.map((e, i) => (
+                        <li key={i} className={e.name === meta.name ? "me" : ""}>
+                          <span className="rk">{i + 1}</span>
+                          <span className="nm">{e.name}</span>
+                          <span className="sc">{e.score.toLocaleString("fr-FR")}</span>
+                          <span className="ds">{e.distance} m</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="proto-empty">
+                      Personne cette semaine. La place est à prendre.
+                    </p>
+                  )}
+                  <p className="proto-empty">
+                    Remis à zéro chaque lundi&nbsp;: tout le monde a sa chance.
+                  </p>
+                </section>
+                <button
+                  className="proto-btn"
+                  {...sfx}
+                  onClick={() => setScreen(stats ? "summary" : "menu")}
+                >
+                  Retour
+                </button>
+              </>
+            )}
             {screen === "shop" && (
               <>
                 <p className="proto-lottery-title">Boutique</p>
@@ -485,7 +645,7 @@ export default function ProtoShell() {
                   ))}
                 </div>
                 <button className="proto-btn" onClick={play} {...sfx}>
-                  Jouer <small>(Entrée)</small>
+                  Jouer {enterHint}
                 </button>
                 <button
                   className="proto-reset"

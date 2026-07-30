@@ -535,3 +535,154 @@
 }
 
 .proto-claim-row .proto-name { flex: 1; width: auto; }
+
+/* ---- End screen: four titled sections instead of one long stack ---- */
+.proto-overlay { gap: 0; }
+
+.proto-sec {
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+  width: min(340px, 94%);
+  padding: 0.85rem 0 0.95rem;
+}
+
+/* A hairline between sections carries the structure without adding boxes */
+.proto-sec + .proto-sec {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.proto-sec h3 {
+  margin: 0;
+  font-size: 0.6rem;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.proto-sec .proto-alt { margin: 0.1rem 0 0.2rem; }
+
+.proto-actions { gap: 0.6rem; }
+
+.proto-actions-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ---- Podium and full board ---- */
+.proto-podium,
+.proto-fullboard {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+.proto-podium li,
+.proto-fullboard li {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr auto;
+  gap: 0.55rem;
+  align-items: baseline;
+  font-size: 0.8125rem;
+  padding: 0.22rem 0.4rem;
+}
+
+.proto-fullboard li { grid-template-columns: 1.9rem 1fr auto 3.4rem; }
+
+.proto-podium li.me,
+.proto-fullboard li.me {
+  background: rgba(255, 209, 102, 0.16);
+  color: #ffd166;
+}
+
+/* Your own line, when it is not adjacent to the podium */
+.proto-podium li.apart { margin-top: 0.35rem; }
+.proto-podium li.apart .rk::before {
+  content: "…";
+  margin-right: 0.3rem;
+  opacity: 0.5;
+}
+
+.proto-podium .rk,
+.proto-fullboard .rk { color: rgba(255, 255, 255, 0.45); }
+.proto-podium .nm,
+.proto-fullboard .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proto-fullboard .ds {
+  text-align: right;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.proto-fullboard {
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.proto-empty {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.42);
+  text-align: center;
+  max-width: 30ch;
+}
+
+.proto-board-more {
+  font-family: inherit;
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.5);
+  background: transparent;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0.3rem;
+}
+
+.proto-board-more:hover { color: #fff; }
+
+/* The overlays sit over a living world. The scrim has to keep text legible while still
+   letting the sky and the hills read — the whole point of putting them there. */
+.proto-overlay {
+  background: radial-gradient(
+    120% 90% at 50% 45%,
+    rgba(9, 7, 20, 0.72) 0%,
+    rgba(9, 7, 20, 0.44) 60%,
+    rgba(9, 7, 20, 0.3) 100%
+  );
+  backdrop-filter: blur(1.5px);
+  justify-content: center;
+  text-shadow: 0 1px 12px rgba(9, 7, 20, 0.8);
+}
+
+.proto-pitch {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.72);
+  max-width: 32ch;
+}
+
+.proto-sec--tall {
+  min-height: 46vh;
+  align-content: center;
+}
+
+.proto-podium--menu {
+  width: min(300px, 88%);
+  background: rgba(0, 0, 0, 0.28);
+  padding: 0.5rem 0.6rem;
+}
+
+/* The menu is a short column now; keep it breathing */
+.proto-overlay > .proto-title { margin-bottom: 0.2rem; }
+.proto-overlay > * + * { margin-top: 0.7rem; }
+.proto-overlay > section + section { margin-top: 0; }
