@@ -14,6 +14,17 @@ body {
   color: #fff;
   -webkit-user-select: none;
   user-select: none;
+  /* The game's whole verb is press-and-HOLD, and a hold is exactly the gesture mobile
+     browsers reserve for their own UI. user-select alone does not stop any of it:
+     - -webkit-touch-callout governs the iOS long-press callout (the magnifier and the
+       Copy/Look Up bubble). It is a SEPARATE property and defaults to allowing it, which is
+       why holding the tether occasionally popped a selection.
+     - tap-highlight-color kills the grey flash Android paints on every touch.
+     - overscroll-behavior stops pull-to-refresh from firing when a hold drifts downward. */
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  touch-action: manipulation;
 }
 
 /* ---- Stage: 16:9 canvas letterboxed to viewport ---- */
