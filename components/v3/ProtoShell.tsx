@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ProtoEngine, ProtoStats } from "@/game/v3/proto.engine";
+import ShopIcon from "./ShopIcon";
 import {
   applyCard,
   buy,
@@ -109,7 +110,7 @@ export default function ProtoShell() {
   return (
     <div className="proto-shell">
       <aside className="proto-aside">
-        <p className="proto-aside-title">Phase 2 — Le méta</p>
+        <p className="proto-aside-title">Rainbow Racer — L&apos;Ascension</p>
         <dl className="proto-legend">
           <dt>Appuyer</dt>
           <dd>s&apos;accrocher à l&apos;ancre la plus proche</dd>
@@ -136,8 +137,8 @@ export default function ProtoShell() {
           <dd>le nuage clignote, puis sa ligne frappe</dd>
         </dl>
         <p className="proto-aside-note">
-          Toujours en rectangles blancs&nbsp;: on juge les mécaniques. Une seule page, qui
-          grandit phase par phase.
+          Décors et effets dessinés en vectoriel, générés à l&apos;image. Prism vient de la
+          V1 — c&apos;est la même licorne.
         </p>
       </aside>
 
@@ -168,7 +169,9 @@ export default function ProtoShell() {
                     Ramasse la <b>poussière</b>, elle ne se perd jamais
                   </li>
                 </ul>
-                <p className="proto-dust">✦ {meta.dust} poussière</p>
+                <p className="proto-dust">
+                  <ShopIcon id="dust" size={18} /> {meta.dust} poussière
+                </p>
                 {meta.bestM > 0 && (
                   <p className="proto-best">
                     record : {meta.bestM} m · {meta.runs} runs
@@ -258,7 +261,9 @@ export default function ProtoShell() {
             {screen === "shop" && (
               <>
                 <p className="proto-lottery-title">Boutique</p>
-                <p className="proto-dust">✦ {meta.dust} poussière</p>
+                <p className="proto-dust">
+                  <ShopIcon id="dust" size={18} /> {meta.dust} poussière
+                </p>
                 <div className="proto-shop">
                   {(["permanent", "consumable", "mode"] as const).map((kind) => (
                     <div key={kind} className="proto-shop-group">
@@ -283,6 +288,9 @@ export default function ProtoShell() {
                             disabled={!can}
                             onClick={() => persist(buy(loadMeta(), u.id))}
                           >
+                            <span className="proto-item-icon">
+                              <ShopIcon id={u.id} />
+                            </span>
                             <span className="proto-item-name">{u.name}</span>
                             <span className="proto-item-price">
                               {has ? "acquis" : active ? "actif" : `✦ ${u.price}`}

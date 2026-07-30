@@ -3,7 +3,7 @@ import ProtoShell from "@/components/v3/ProtoShell";
 import "./proto.css";
 
 export const metadata: Metadata = {
-  title: "Phase 1 — L'Ascension",
+  title: "Rainbow Racer — L'Ascension",
   description: "Prototype jouable de Rainbow Racer V3 : l'Arc, les paliers, les éclairs.",
 };
 

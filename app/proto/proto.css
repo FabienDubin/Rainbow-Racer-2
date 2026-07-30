@@ -364,3 +364,21 @@
 }
 
 .proto-reset:hover { color: rgba(255, 255, 255, 0.7); }
+
+/* Shop rows gained an icon column */
+.proto-item {
+  grid-template-columns: auto 1fr auto;
+}
+
+.proto-item-icon {
+  color: rgba(255, 255, 255, 0.85);
+  align-self: center;
+}
+
+.proto-item-blurb { grid-column: 2 / -1; }
+
+.proto-dust {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}

@@ -14,6 +14,11 @@
 // World Y points UP. Screen conversion happens only at draw time.
 
 import { RunConfig } from "./meta";
+import { skyAt, SkyState } from "./art/palette";
+import {
+  Camera, drawAnchor, drawDustMote, drawGarlandGem, drawGarlandThread, drawParallax,
+  drawPalier, drawPrism, drawSky, drawStorm, drawTether, drawThundercloud,
+} from "./art/draw";
 import {
   AIR_DRAG, CAM_FOLLOW_SPEED, CAM_PLAYER_SCREEN_FRAC, CHAIN_DROP_TOLERANCE,
   DEATH_MARGIN, FLAP_CHARGES, FLAP_COOLDOWN, FLAP_IMPULSE, GRAVITY, MAX_FALL_SPEED,
@@ -154,6 +159,8 @@ export class ProtoEngine {
   // every swing circle into an ellipse — which quietly misreads the physics you are
   // trying to feel. Taller screens now simply show more sky.
   private viewH = VIEW_H;
+  private wingFrames: (HTMLImageElement | undefined)[] = [];
+  private sky: SkyState = skyAt(0);
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -173,6 +180,19 @@ export class ProtoEngine {
     this.viewH = Math.round(VIEW_W * (boxH / boxW));
     canvas.width = VIEW_W;
     canvas.height = this.viewH;
+    // Prism's three wing positions, straight from V1
+    if (typeof Image !== "undefined") {
+      this.wingFrames = [
+        "/img/Unicorn-wings-down.png",
+        "/img/Unicorn-wings-middle.png",
+        "/img/Unicorn-wings-up.png",
+      ].map((src) => {
+        const img = new Image();
+        img.src = src;
+        return img;
+      });
+    }
+
     this.flapCharges = this.maxWings();
     this.talismanLeft = this.cfg.talisman ? 1 : 0;
     if (this.cfg.startBoost) {
@@ -182,6 +202,20 @@ export class ProtoEngine {
     }
     this.camY = this.py + (0.5 - CAM_PLAYER_SCREEN_FRAC) * this.viewH * -1;
     this.generateUpTo(this.camY + this.viewH * 1.5);
+  }
+
+  // A touch of scale on a fresh attach, so a catch has some pop
+  private dashScale(): number {
+    return 1 + this.flashAttach * 0.12;
+  }
+
+  private camera(): Camera {
+    return {
+      camY: this.camY,
+      viewW: VIEW_W,
+      viewH: this.viewH,
+      toScreen: (worldY: number) => this.screenY(worldY),
+    };
   }
 
   private maxWings(): number {
@@ -315,6 +349,8 @@ export class ProtoEngine {
 
     this.generateUpTo(this.camY + this.viewH * 1.2);
     this.anchors = this.anchors.filter((a) => a.y > this.camY - this.viewH);
+
+    this.sky = skyAt(this.peakY / PX_PER_METER);
 
     // ---- Poussière
     const magnetR = this.cfg.magnet ? DUST_MAGNET_RADIUS : DUST_RADIUS;
@@ -750,15 +786,15 @@ export class ProtoEngine {
   // ------------------------------------------------------------------ draw
   private draw(): void {
     const ctx = this.ctx;
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, VIEW_W, this.viewH);
+    const cam = this.camera();
+    drawSky(ctx, cam, this.sky, this.time);
+    drawParallax(ctx, cam, this.sky);
 
     ctx.save();
     if (this.shake > 0) {
       ctx.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake);
     }
 
-    this.drawAltitudeGrid(ctx);
     this.drawCheckpoints(ctx);
     this.drawDust(ctx);
     this.drawBolts(ctx);
@@ -771,92 +807,51 @@ export class ProtoEngine {
     for (const a of this.anchors) {
       const sy = this.screenY(a.y);
       if (sy < -40 || sy > this.viewH + 40) continue;
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(a.x, sy, 7, 0, Math.PI * 2);
-      ctx.stroke();
-      if (a.used) {
-        ctx.fillStyle = "#fff";
-        ctx.beginPath();
-        ctx.arc(a.x, sy, 3.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      if (a === inRange) {
-        ctx.strokeStyle = "rgba(255,255,255,0.45)";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(a.x, sy, 15, 0, Math.PI * 2);
-        ctx.stroke();
-      }
+      drawAnchor(ctx, a.x, sy, this.sky.light, a.used, a === inRange, a.skip, this.time);
     }
 
-    // Rope + the swing circle, so the arc you're on is legible. Everything here is
-    // drawn three times — at x, x-W and x+W — so a swing that crosses the seam reads
-    // as one continuous arc instead of snapping across the screen.
+    // Rope + swing circle. The rope is the game's name made literal: a rainbow ribbon.
     if (this.anchor) {
       const ay = this.screenY(this.anchor.y);
       ctx.save();
-      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.strokeStyle = "rgba(255,255,255,0.16)";
       ctx.lineWidth = 1;
+      ctx.setLineDash([2, 7]);
       ctx.beginPath();
       ctx.arc(this.anchor.x, ay, this.ropeLen, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.setLineDash([]);
 
-      // The release window, made visible. Velocity on a circle is tangential, so it
-      // points straight up exactly when you are level with the anchor. Marking those
-      // two points turns invisible timing into something you can aim at.
+      // The release window: where your velocity points straight up
       for (const side of [-1, 1]) {
         const mx = this.anchor.x + side * this.ropeLen;
-        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        ctx.strokeStyle = "rgba(255,255,255,0.7)";
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(mx - 9, ay);
-        ctx.lineTo(mx + 9, ay);
-        ctx.stroke();
-        ctx.beginPath();
+        ctx.moveTo(mx - 8, ay);
+        ctx.lineTo(mx + 8, ay);
         ctx.moveTo(mx, ay - 3);
-        ctx.lineTo(mx, ay - 13);
+        ctx.lineTo(mx, ay - 12);
         ctx.stroke();
       }
-
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(this.anchor.x, ay);
-      ctx.lineTo(this.px, this.screenY(this.py));
-      ctx.stroke();
       ctx.restore();
+
+      drawTether(ctx, this.anchor.x, ay, this.px, this.screenY(this.py), this.sky.light);
     }
 
-    // Player and velocity vector. Deliberately NOT mirrored across the seam: flying
-    // off the side and vanishing for a beat before reappearing is the fun of it.
+    // Prism herself — the V1 sprite. Not mirrored across the seam: vanishing off one
+    // side and reappearing on the other is deliberate.
     const psy = this.screenY(this.py);
-    const size = 20 + this.flashAttach * 5;
-
-    for (const off of [0]) {
-      const x = this.px + off;
-      ctx.strokeStyle = this.flashRelease > 0 ? "#fff" : "rgba(255,255,255,0.4)";
-      ctx.lineWidth = this.flashRelease > 0 ? 3 : 1.5;
-      ctx.beginPath();
-      ctx.moveTo(x, psy);
-      ctx.lineTo(x + this.vx * 0.12, psy - this.vy * 0.12);
-      ctx.stroke();
-
-      ctx.fillStyle = "#fff";
-      if (this.stunTime > 0) {
-        // Tumbling, not flying: you can see at a glance that you are not in control
-        ctx.save();
-        ctx.translate(x, psy);
-        ctx.rotate((STUN_TIME - this.stunTime) * 14);
-        ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(this.time * 30));
-        ctx.fillRect(-size / 2, -size / 2, size, size);
-        ctx.restore();
-        ctx.globalAlpha = 1;
-      } else {
-        ctx.fillRect(x - size / 2, psy - size / 2, size, size);
-      }
-    }
+    drawPrism(
+      ctx,
+      this.wingFrames,
+      this.px,
+      psy,
+      this.vx,
+      this.vy,
+      this.dashScale(),
+      this.stunTime > 0 ? STUN_TIME - this.stunTime : 0
+    );
 
     this.drawOffscreenMarker(ctx);
     ctx.restore();
@@ -869,86 +864,32 @@ export class ProtoEngine {
     this.drawHud(ctx);
   }
 
-  private drawAltitudeGrid(ctx: CanvasRenderingContext2D): void {
-    const step = 10 * PX_PER_METER; // a line every 10 m gives a real sense of speed
-    const startM = Math.floor((this.camY - this.viewH / 2) / step) * step;
-    ctx.strokeStyle = "rgba(255,255,255,0.09)";
-    ctx.fillStyle = "rgba(255,255,255,0.28)";
-    ctx.font = "11px ui-monospace, monospace";
-    ctx.lineWidth = 1;
-    for (let y = startM; y < this.camY + this.viewH / 2 + step; y += step) {
-      const sy = this.screenY(y);
-      ctx.beginPath();
-      ctx.moveTo(0, sy);
-      ctx.lineTo(VIEW_W, sy);
-      ctx.stroke();
-      const m = Math.round(y / PX_PER_METER);
-      if (m % 50 === 0 && m >= 0) ctx.fillText(`${m}m`, 6, sy - 5);
-    }
-  }
 
   // Dust: a plain dot on the line, a ring for the valuable arcs so the two read apart
   // at a glance and you can decide whether the detour is worth it.
   private drawDust(ctx: CanvasRenderingContext2D): void {
-    // A bonus arc is drawn as a GARLAND: its pieces joined by a faint thread, so it reads
-    // as one object to sweep through rather than four loose specks. Fab could not tell the
-    // two kinds apart at all — "je vois que des poussières" — and you cannot choose to
-    // detour for something you cannot distinguish.
-    const arcs = new Map<number, Dust[]>();
+    const arcs = new Map<number, { x: number; y: number }[]>();
     for (const d of this.dusts) {
       if (d.arc === 0) continue;
+      const pt = { x: d.x, y: this.screenY(d.y) };
       const list = arcs.get(d.arc);
-      if (list) list.push(d);
-      else arcs.set(d.arc, [d]);
+      if (list) list.push(pt);
+      else arcs.set(d.arc, [pt]);
     }
-    for (const list of arcs.values()) {
-      if (list.length < 2) continue;
-      ctx.strokeStyle = "rgba(255,255,255,0.22)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      list.forEach((d, i) => {
-        const sy = this.screenY(d.y);
-        if (i === 0) ctx.moveTo(d.x, sy);
-        else ctx.lineTo(d.x, sy);
-      });
-      ctx.stroke();
-    }
+    for (const list of arcs.values()) drawGarlandThread(ctx, list);
 
     for (const d of this.dusts) {
       const sy = this.screenY(d.y);
-      if (sy < -20 || sy > this.viewH + 20) continue;
-      if (d.value > 1) {
-        // Pulsing halo so the eye is drawn to it well before it is in reach
-        const pulse = 0.5 + 0.5 * Math.sin(this.time * 4 + d.x * 0.05);
-        ctx.strokeStyle = `rgba(255,255,255,${0.16 + pulse * 0.24})`;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(d.x, sy, 11 + pulse * 3, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.strokeStyle = "#fff";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(d.x, sy, 6.5, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.fillStyle = "#fff";
-        ctx.beginPath();
-        ctx.arc(d.x, sy, 2, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.fillStyle = "rgba(255,255,255,0.55)";
-        ctx.beginPath();
-        ctx.arc(d.x, sy, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      if (sy < -24 || sy > this.viewH + 24) continue;
+      if (d.value > 1) drawGarlandGem(ctx, d.x, sy, this.time, d.arc);
+      else drawDustMote(ctx, d.x, sy, this.time);
     }
 
-    // Floating values on pickup
     ctx.textAlign = "center";
     for (const p of this.pickups) {
       ctx.globalAlpha = Math.min(1, p.life * 2.2);
-      ctx.fillStyle = "#fff";
-      ctx.font = `${p.big ? "bold 16px" : "12px"} ui-monospace, monospace`;
+      ctx.fillStyle = p.big ? "#fff3c4" : "#ffffff";
+      ctx.font = `${p.big ? "bold 17px" : "12px"} ui-monospace, monospace`;
       ctx.fillText(p.text, p.x, this.screenY(p.y));
     }
     ctx.globalAlpha = 1;
@@ -958,7 +899,6 @@ export class ProtoEngine {
   // The next palier, drawn as a line you can aim at. Seeing the reward coming is what
   // turns the storm from a monotone squeeze into a rhythm.
   private drawCheckpoints(ctx: CanvasRenderingContext2D): void {
-    // Walk the growing sequence rather than a fixed grid
     const top = this.camY + this.viewH;
     const bottom = this.camY - this.viewH;
     let gap = CHECKPOINT_FIRST_M;
@@ -969,22 +909,7 @@ export class ProtoEngine {
       gap *= CHECKPOINT_GROWTH;
       m += gap;
       if (y < bottom) continue;
-      const sy = this.screenY(y);
-      const crossed = thisM < this.nextCheckpointM;
-      ctx.strokeStyle = crossed ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.5)";
-      ctx.lineWidth = crossed ? 1 : 2;
-      ctx.setLineDash(crossed ? [4, 10] : [14, 8]);
-      ctx.beginPath();
-      ctx.moveTo(0, sy);
-      ctx.lineTo(VIEW_W, sy);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      if (!crossed) {
-        ctx.fillStyle = "rgba(255,255,255,0.6)";
-        ctx.font = "11px ui-monospace, monospace";
-        ctx.textAlign = "right";
-        ctx.fillText(`PALIER ${Math.round(thisM)}m`, VIEW_W - 8, sy - 6);
-      }
+      drawPalier(ctx, this.screenY(y), VIEW_W, `PALIER ${Math.round(thisM)} m`, thisM < this.nextCheckpointM);
     }
   }
 
@@ -993,39 +918,9 @@ export class ProtoEngine {
   private drawBolts(ctx: CanvasRenderingContext2D): void {
     for (const b of this.bolts) {
       const sy = this.screenY(b.y);
-      if (sy < -60 || sy > this.viewH + 60) continue;
-      const state = b.state;
-
-      // The cloud itself
-      ctx.strokeStyle = state === "dormant" ? "rgba(255,255,255,0.32)" : "#fff";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(b.x, sy, 30, 13, 0, 0, Math.PI * 2);
-      ctx.stroke();
-
-      if (state === "telegraph") {
-        // Warning grows as the strike approaches, so the timing is readable
-        const t = Math.min(1, b.timer / BOLT_TELEGRAPH);
-        ctx.globalAlpha = 0.25 + t * 0.5;
-        ctx.strokeStyle = "#fff";
-        ctx.lineWidth = 1 + t * 2;
-        ctx.setLineDash([6, 8]);
-        ctx.beginPath();
-        ctx.moveTo(0, sy);
-        ctx.lineTo(VIEW_W, sy);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.globalAlpha = 1;
-      } else if (state === "strike") {
-        ctx.fillStyle = "rgba(255,255,255,0.22)";
-        ctx.fillRect(0, sy - BOLT_THICKNESS / 2, VIEW_W, BOLT_THICKNESS);
-        ctx.strokeStyle = "#fff";
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(0, sy);
-        ctx.lineTo(VIEW_W, sy);
-        ctx.stroke();
-      }
+      if (sy < -70 || sy > this.viewH + 70) continue;
+      const charge = b.state === "telegraph" ? Math.min(1, b.timer / BOLT_TELEGRAPH) : 0;
+      drawThundercloud(ctx, b.x, sy, b.state, charge, VIEW_W, this.time);
     }
   }
 
@@ -1109,30 +1004,13 @@ export class ProtoEngine {
 
   // Phase 0 storm: a hatched band. No art, but the pressure has to be legible.
   private drawStorm(ctx: CanvasRenderingContext2D): void {
-    const sy = this.screenY(this.stormY);
-    if (sy < -20) return;
-    ctx.fillStyle = "rgba(255,255,255,0.10)";
-    ctx.fillRect(0, sy, VIEW_W, this.viewH - sy + DEATH_MARGIN);
-    ctx.strokeStyle = "rgba(255,255,255,0.7)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, sy);
-    ctx.lineTo(VIEW_W, sy);
-    ctx.stroke();
-    ctx.strokeStyle = "rgba(255,255,255,0.22)";
-    ctx.lineWidth = 1;
-    for (let x = -this.viewH; x < VIEW_W; x += 26) {
-      ctx.beginPath();
-      ctx.moveTo(x, sy);
-      ctx.lineTo(x + this.viewH, sy + this.viewH);
-      ctx.stroke();
-    }
-    // Distance to the storm — the number the player actually plays against
-    const gap = Math.round((this.py - this.stormY) / PX_PER_METER);
-    ctx.fillStyle = "rgba(255,255,255,0.8)";
-    ctx.font = "600 13px ui-monospace, monospace";
-    ctx.textAlign = "center";
-    ctx.fillText(`ORAGE  ${gap}m`, VIEW_W / 2, sy + 20);
+    drawStorm(
+      ctx,
+      this.camera(),
+      this.screenY(this.stormY),
+      this.time,
+      (this.py - this.stormY) / PX_PER_METER
+    );
   }
 
   private drawHud(ctx: CanvasRenderingContext2D): void {
