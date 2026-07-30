@@ -99,6 +99,11 @@ export interface MetaState {
   name: string; // for the weekly board
   giftsTaken: number; // gifts actually collected
   sinceGiftOffered: number; // lotteries since one last held a gift
+  // Whether a gift was ever surfaced to the player. Before the in-run boon banner existed,
+  // a won gift was announced on a card for one second and then silently spent on the next
+  // run — Fab's save counted one taken and he had no idea. Saves from that era get their
+  // guaranteed first gift back, once.
+  sawGift: boolean;
 }
 
 const EMPTY: MetaState = {
@@ -113,6 +118,7 @@ const EMPTY: MetaState = {
   name: "",
   giftsTaken: 0,
   sinceGiftOffered: 99, // a brand-new player is due one immediately
+  sawGift: false, // set the first time a gift is actually SHOWN as armed
 };
 
 export function loadMeta(): MetaState {
@@ -121,12 +127,19 @@ export function loadMeta(): MetaState {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return { ...EMPTY };
     const parsed = JSON.parse(raw) as Partial<MetaState>;
-    return {
+    const state: MetaState = {
       ...EMPTY,
       ...parsed,
       permanents: Array.isArray(parsed.permanents) ? parsed.permanents : [],
       consumables: Array.isArray(parsed.consumables) ? parsed.consumables : [],
     };
+    // One-time migration: a gift counted before the banner shipped was never seen, so it
+    // does not count as the first one. Nobody loses anything; the guaranteed gift returns.
+    if (parsed.sawGift === undefined && state.giftsTaken > 0) {
+      state.giftsTaken = 0;
+      state.sinceGiftOffered = 99;
+    }
+    return state;
   } catch {
     return { ...EMPTY };
   }
@@ -197,7 +210,12 @@ const GIFTABLE = ["boost", "talisman", "magnet"];
 //   after    — roughly one in seven, with a hard pity at ten so a dry streak cannot drag.
 //
 // The counter tracks gifts OFFERED, not taken. Seeing one on the table and picking the
-// wrong card is the gamble, and that near-miss is doing real work.
+// wrong card is the gamble, and that near-miss is doing real work — but NOT for the very
+// first one. Fab played eight runs and never received a gift: a card carried one on seven
+// of those tables, and he lost the 1-in-3 pick every time (an 8.8% streak, so just bad
+// luck, not a bug). From the outside that is indistinguishable from "gifts do not exist",
+// which loses exactly the player the first gift is meant to hook. So the first one is
+// dealt on all three cards — guaranteed received, and the choice becomes WHICH gift.
 export function giftChance(state: MetaState): number {
   // Coalesced: a save written before these fields existed must still get its first gift
   const taken = state.giftsTaken ?? 0;
@@ -213,14 +231,22 @@ export function giftChance(state: MetaState): number {
 
 export function rollLottery(runDust: number, state: MetaState): LotteryCard[] {
   const floor = [6, 14, 25];
-  const giftIndex =
-    Math.random() < giftChance(state) ? Math.floor(Math.random() * 3) : -1;
+  const hasGift = Math.random() < giftChance(state);
+  const firstEver = (state.giftsTaken ?? 0) === 0;
+  // The first gift goes on every card; later ones on a single card you have to find
+  const giftIndex = hasGift && !firstEver ? Math.floor(Math.random() * 3) : -1;
+  // Three different gifts, shuffled, so the guaranteed one is still a decision
+  const pool = [...GIFTABLE].sort(() => Math.random() - 0.5);
 
   const cards = [0, 1, 2].map((i) => {
     const share = Math.round(runDust * (0.15 + i * 0.2));
     const dust = floor[i] + share;
     const gift =
-      i === giftIndex ? GIFTABLE[Math.floor(Math.random() * GIFTABLE.length)] : null;
+      hasGift && firstEver
+        ? pool[i % pool.length]
+        : i === giftIndex
+          ? GIFTABLE[Math.floor(Math.random() * GIFTABLE.length)]
+          : null;
     return { label: gift ? "cadeau" : `${dust}`, dust, gift };
   });
 
@@ -284,6 +310,8 @@ export function buy(state: MetaState, id: string): MetaState {
 export function startRun(state: MetaState): MetaState {
   return {
     ...state,
+    // The run is about to name its boons over the canvas, so they count as seen
+    sawGift: state.sawGift || state.consumables.length > 0,
     consumables: [],
     modeRunsLeft: Math.max(0, state.modeRunsLeft - 1),
     mode: state.modeRunsLeft - 1 > 0 ? state.mode : null,

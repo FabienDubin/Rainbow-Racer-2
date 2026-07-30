@@ -250,13 +250,16 @@ export class GameAudio {
     }
 
     if (this.targetTier >= 5 && inBar % 8 === 3) {
-      // High bells, two octaves up, well into the delay: the "we are very high now" sound
-      const deg = PENTATONIC[(step / 5) % PENTATONIC.length];
+      // High bells, two octaves up, well into the delay: the "we are very high now" sound.
+      // floor() is load-bearing: `step / 5` is fractional here, and a fractional array
+      // index is undefined, not a rounded lookup. That fed NaN to an AudioParam and threw.
+      const deg = PENTATONIC[Math.floor(step / 5) % PENTATONIC.length];
       this.pluck(midi(root + 36 + deg), when, "shimmer", 0.16);
     }
 
     if (this.targetTier >= 4 && (inBar === 4 || inBar === 11)) {
-      const deg = PENTATONIC[(step / 3) % PENTATONIC.length];
+      // Same trap as the shimmer above: inBar 4 and 11 are never multiples of 3
+      const deg = PENTATONIC[Math.floor(step / 3) % PENTATONIC.length];
       this.lead(midi(root + 24 + deg), when);
     }
   }
@@ -269,7 +272,7 @@ export class GameAudio {
   private pad(freq: number, when: number, dur: number, level = 1): void {
     const ctx = this.ctx!;
     const bus = this.voice("pad");
-    if (!bus) return;
+    if (!bus || !Number.isFinite(freq)) return;
     // Two slightly detuned saws through a soft filter: the classic warm pad
     const g = ctx.createGain();
     g.gain.setValueAtTime(0, when);
@@ -295,7 +298,7 @@ export class GameAudio {
   private bass(freq: number, when: number): void {
     const ctx = this.ctx!;
     const bus = this.voice("bass");
-    if (!bus) return;
+    if (!bus || !Number.isFinite(freq)) return;
     // Saw through a filter with its own envelope: the electro bass sound, rather than a
     // plain triangle, which read as chiptune
     const o = ctx.createOscillator();
@@ -326,7 +329,7 @@ export class GameAudio {
   private pluck(freq: number, when: number, layer: Layer, gain = 0.28): void {
     const ctx = this.ctx!;
     const bus = this.voice(layer);
-    if (!bus) return;
+    if (!bus || !Number.isFinite(freq)) return;
     const o = ctx.createOscillator();
     o.type = "triangle";
     o.frequency.value = freq;
@@ -342,7 +345,7 @@ export class GameAudio {
   private lead(freq: number, when: number): void {
     const ctx = this.ctx!;
     const bus = this.voice("lead");
-    if (!bus) return;
+    if (!bus || !Number.isFinite(freq)) return;
     // Triangle, not square: a square lead is bright and cheap and cuts straight through the
     // dream. The slow attack keeps it singing rather than plinking.
     const o = ctx.createOscillator();

@@ -753,3 +753,35 @@
   font-size: 0.7rem;
   color: rgba(255, 255, 255, 0.5);
 }
+
+/* A gift you cannot see is a gift you did not get. This names the run's boons over the
+   canvas for a few seconds at launch, then gets out of the way. */
+.proto-boons {
+  position: absolute;
+  top: 0.9rem;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 0.32rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(12, 9, 26, 0.72);
+  border: 1px solid rgba(255, 214, 120, 0.55);
+  color: #ffe0a3;
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: proto-boons-fade 4.5s ease-out forwards;
+}
+
+@keyframes proto-boons-fade {
+  0% { opacity: 0; transform: translate(-50%, -8px); }
+  12% { opacity: 1; transform: translate(-50%, 0); }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Same line on the summary, where the thumb is already heading for Rejouer */
+.proto-armed--next {
+  color: #ffe0a3;
+}

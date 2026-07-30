@@ -53,15 +53,10 @@ export default function ProtoShell() {
   const [muted, setMuted] = useState(false);
   const [board, setBoard] = useState<LeaderboardEntry[]>([]);
   const [rank, setRank] = useState<number | null>(null);
+  // What the CURRENT run is carrying, captured at launch and shown over the canvas
+  const [boons, setBoons] = useState<string[]>([]);
   const [shareLabel, setShareLabel] = useState("Partager");
   const [nameDraft, setNameDraft] = useState("");
-  // Keyboard hints are noise on a phone, where there is no Enter key to press
-  const [isTouch, setIsTouch] = useState(false);
-  useEffect(() => {
-    setIsTouch(window.matchMedia("(hover: none)").matches);
-  }, []);
-  const enterHint = isTouch ? null : <small>(Entrée)</small>;
-
   useEffect(() => {
     audio.init();
     setMuted(audio.muted);
@@ -176,6 +171,12 @@ export default function ProtoShell() {
     // Consumables are spent and a mode burns one of its runs at the moment of launching
     const armed = loadMeta();
     const cfg = configFor(armed);
+    // Snapshot the boons BEFORE startRun() clears them. Fab won a gift and never knew:
+    // it was announced for one second on a card, then spent by the next run in silence.
+    setBoons([
+      ...armed.consumables.map((id) => byId(id)?.name).filter(Boolean) as string[],
+      ...(armed.modeRunsLeft > 0 && armed.mode ? [byId(armed.mode)?.name ?? ""] : []),
+    ].filter(Boolean));
     persist(startRun(armed));
     setStats(null);
     setScreen("playing");
@@ -295,6 +296,14 @@ export default function ProtoShell() {
         >
           {muted ? "♪̶" : "♪"}
         </button>
+
+        {/* In-run proof that the boon is real. It fades after a few seconds so it never
+            competes with the game, but you SEE what you are carrying. */}
+        {screen === "playing" && boons.length > 0 && (
+          <p className="proto-boons" key={boons.join()}>
+            {boons.join(" · ")}
+          </p>
+        )}
 
         {screen !== "playing" && (
           <div className="proto-overlay">
@@ -526,8 +535,16 @@ export default function ProtoShell() {
 
                 <section className="proto-sec proto-actions">
                   <button className="proto-btn" onClick={play} {...sfx}>
-                    Rejouer {enterHint}
+                    Rejouer
                   </button>
+                  {/* The armed list used to live on the menu only — a screen you never
+                      return to once you are in the run/lottery/summary loop. So a gift
+                      was won and spent without ever being seen. It belongs here. */}
+                  {armedNames.length > 0 && (
+                    <p className="proto-armed proto-armed--next">
+                      ce run : {armedNames.join(" · ")}
+                    </p>
+                  )}
                   <div className="proto-actions-row">
                     <button
                       className="proto-btn-ghost"
@@ -651,7 +668,7 @@ export default function ProtoShell() {
                   ))}
                 </div>
                 <button className="proto-btn" onClick={play} {...sfx}>
-                  Jouer {enterHint}
+                  Jouer
                 </button>
                 <button
                   className="proto-reset"
