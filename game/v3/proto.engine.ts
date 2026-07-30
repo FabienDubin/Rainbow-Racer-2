@@ -214,7 +214,9 @@ export class ProtoEngine {
     // horizontal speed and flipped its direction — a momentum tax, in a game whose
     // whole point is now momentum. Wrapping keeps the velocity vector untouched, and
     // it turns a narrow portrait corridor into a loop you can route around.
-    this.px = this.wrapX(this.px);
+    // Wrap only in free flight. While roped you stay in the anchor's own frame, so the
+    // swing can carry you past the edge without the world folding underneath you.
+    if (this.anchor === null) this.px = this.wrapX(this.px);
 
     // Global speed governor. The release kick is multiplicative, and until the walls
     // were removed their 50% damping was quietly capping it — so speed compounded the
@@ -262,13 +264,12 @@ export class ProtoEngine {
     return x;
   }
 
-  private wrapDx(from: number, to: number): number {
-    const w = this.wrapW;
-    let dx = to - from;
-    if (dx > w / 2) dx -= w;
-    else if (dx < -w / 2) dx += w;
-    return dx;
-  }
+  // NOTE: there is deliberately no wrapped-delta helper any more.
+  // Wrapping is a property of free flight, not of the rope. Letting the tether take the
+  // short way round the cylinder meant you could grab an anchor 590px away on the far
+  // side of the screen and get yanked bodily across it — which is what "je sors d'un
+  // côté et je réapparais de l'autre" was actually describing. A rope takes no
+  // shortcuts: every tether calculation below uses plain, direct geometry.
 
   // Pick the best anchor in range: nearest, but strongly biased toward ones above us
   private pickAnchor(): Anchor | null {
@@ -279,7 +280,7 @@ export class ProtoEngine {
       if (a === this.anchor) continue;
       // Don't let the player re-grab the rung they just left and stall out
       if (a === this.lastReleased && this.regrabTimer > 0) continue;
-      const dx = this.wrapDx(this.px, a.x);
+      const dx = a.x - this.px;
       const dy = a.y - this.py;
       const dist = Math.hypot(dx, dy);
       if (dist > TETHER_RANGE || dist < 30) continue;
@@ -298,10 +299,7 @@ export class ProtoEngine {
   private attach(a: Anchor): void {
     this.anchor = a;
     a.used = true;
-    this.ropeLen = Math.max(
-      ROPE_MIN,
-      Math.hypot(this.wrapDx(this.px, a.x), a.y - this.py)
-    );
+    this.ropeLen = Math.max(ROPE_MIN, Math.hypot(a.x - this.px, a.y - this.py));
     this.attaches++;
     if (a.skip) this.skipsTaken++;
     this.reelLeft = WINCH_BUDGET * this.winchCharge;
@@ -315,7 +313,7 @@ export class ProtoEngine {
     this.lastAngle = Math.atan2(this.py - a.y, this.px - a.x);
     this.flashAttach = 1;
     // Drive the pendulum the way we're already travelling; fall back to our side
-    const adx = this.wrapDx(a.x, this.px);
+    const adx = this.px - a.x;
     const adist = Math.max(1, Math.hypot(adx, this.py - a.y));
     const nx = adx / adist;
     const ny = (this.py - a.y) / adist;
@@ -384,7 +382,7 @@ export class ProtoEngine {
       this.reelLeft -= pull;
     }
 
-    const dx = this.wrapDx(a.x, this.px);
+    const dx = this.px - a.x;
     const dy = this.py - a.y;
     const dist = Math.hypot(dx, dy);
     if (dist < 0.001) return;
@@ -398,7 +396,6 @@ export class ProtoEngine {
     const ny = dy / dist;
     this.px = a.x + nx * this.ropeLen;
     this.py = a.y + ny * this.ropeLen;
-    this.px = this.wrapX(this.px);
 
     // The rope can pull but never push, so outward radial velocity has to go.
     // Zeroing it outright threw away everything you earned by diving: grab a ring
@@ -576,10 +573,7 @@ export class ProtoEngine {
     // as one continuous arc instead of snapping across the screen.
     if (this.anchor) {
       const ay = this.screenY(this.anchor.y);
-      const seam = [-this.wrapW, 0, this.wrapW];
-      for (const off of seam) {
       ctx.save();
-      ctx.translate(off, 0);
       ctx.strokeStyle = "rgba(255,255,255,0.18)";
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -607,14 +601,9 @@ export class ProtoEngine {
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(this.anchor.x, ay);
-      // Follow the short way round, so the rope never stretches across the whole view
-      ctx.lineTo(
-        this.anchor.x + this.wrapDx(this.anchor.x, this.px),
-        this.screenY(this.py)
-      );
+      ctx.lineTo(this.px, this.screenY(this.py));
       ctx.stroke();
       ctx.restore();
-      }
     }
 
     // Player and velocity vector. Deliberately NOT mirrored across the seam: flying

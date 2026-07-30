@@ -43,6 +43,10 @@ hidden behind "it's a bit weird". Keep them running as the physics changes.
 - **speedcap.js** — checks speed is not compounding. The release kick is multiplicative,
   so it needs a real governor; the screen walls used to be one by accident.
 
+- **seam.js** — asserts the tether cannot reach an anchor "through" the screen edge.
+  Wrapping is for free flight only; when the rope was allowed the same shortcut you
+  could grab something 590px away on the far side and get yanked bodily across.
+
 - **marker.js** — the off-screen indicator. Uses a canvas stub that *records* draw
   calls instead of discarding them, so placement and rotation can be asserted without a
   browser. Handy pattern for any other HUD element that is hard to catch on camera.
