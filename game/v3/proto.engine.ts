@@ -21,7 +21,7 @@ import {
   GRAB_COOLDOWN, REEL_SPEED, REF_RELEASE_SPEED, REGRAB_LOCKOUT, ROPE_MIN, ROW_MARGIN_X,
   ROW_SPACING, WRAP_MARGIN, BOLT_ARM_RANGE, BOLT_COOLDOWN, BOLT_ROWS_APART,
   BOLT_START_M, BOLT_STRIKE, BOLT_TELEGRAPH, BOLT_THICKNESS, CHECKPOINT_EVERY_M,
-  CHECKPOINT_PUSHBACK, STUN_DROP, STUN_TIME,
+  CHECKPOINT_PUSHBACK, STUN_DROP, STUN_TIME, HIT_FLASH, HIT_SHAKE, HIT_STOP,
   START_VY, STORM_ACCEL, STORM_SPEED_BASE, STORM_START_BELOW,
   STREAK_COUNT, STREAK_MAX_SPEED, STREAK_MIN_SPEED, SWING_PUMP, SWING_RECOVERY_DRIVE,
   SWING_STALL_FLOOR, RELEASE_KICK, TETHER_RANGE, VIEW_H, VIEW_W, WHIP_RECOVERY,
@@ -95,6 +95,9 @@ export class ProtoEngine {
   private nextCheckpointM = CHECKPOINT_EVERY_M;
   private checkpoints = 0;
   private checkpointToast = 0;
+  private hitFlash = 0;
+  private shake = 0;
+  private hitStop = 0; // frames are frozen while this runs down
 
   // Wings
   private flapCharges = FLAP_CHARGES;
@@ -200,7 +203,13 @@ export class ProtoEngine {
   private frame = (ts: number): void => {
     const dt = Math.min((ts - this.lastTs) / 1000, 1 / 30);
     this.lastTs = ts;
-    if (!this.over) this.update(dt);
+    // Hit-stop: the world holds still for a moment on impact. Cheapest way to give a
+    // hit weight, and it reads even without sound.
+    if (this.hitStop > 0) {
+      this.hitStop -= dt;
+    } else if (!this.over) {
+      this.update(dt);
+    }
     this.draw();
     this.pressEdge = false;
     this.releaseEdge = false;
@@ -218,6 +227,8 @@ export class ProtoEngine {
     this.whipFlash = Math.max(0, this.whipFlash - dt * 2.5);
     this.stunTime = Math.max(0, this.stunTime - dt);
     this.checkpointToast = Math.max(0, this.checkpointToast - dt);
+    this.hitFlash = Math.max(0, this.hitFlash - dt * 3.5);
+    this.shake = Math.max(0, this.shake - dt * 45);
 
     // ---- Input resolution: one press means "attach", or "flap" if nothing in range.
     // Stunned means exactly that: no grabbing, no flapping, you just fall.
@@ -362,13 +373,18 @@ export class ProtoEngine {
 
   // Releasing is only worth something if you actually swung. A tap-release is a
   // "slip": you keep your momentum but earn no chain link and no wing refill.
-  private release(auto = false): void {
+  // `rewarded: false` detaches you without paying out anything — used when a bolt tears
+  // the rope away. Routing a stunned detach through the normal path meant the release was
+  // *scored*, which handed back the winch charge the hit had just dumped and even granted
+  // a chain link and fresh wings. Getting hit was quietly rewarding you.
+  private release(auto = false, rewarded = true): void {
     this.lastReleased = this.anchor;
     this.regrabTimer = REGRAB_LOCKOUT;
     this.grabCooldown = GRAB_COOLDOWN;
     this.anchor = null;
-    this.flashRelease = 1;
+    this.flashRelease = rewarded ? 1 : 0;
     if (auto) this.autoReleases++;
+    if (!rewarded) return;
 
     // Score the release: how fast, and how close to straight up. This becomes the
     // fuel for the next rung's winch, so timing directly buys altitude.
@@ -534,10 +550,18 @@ export class ProtoEngine {
       if (b.state === "strike" && this.stunTime <= 0 && Math.abs(this.py - b.y) < BOLT_THICKNESS / 2) {
         this.hits++;
         this.stunTime = STUN_TIME;
+        this.hitFlash = HIT_FLASH;
+        this.shake = HIT_SHAKE;
+        this.hitStop = HIT_STOP;
+        if (this.anchor) this.release(true, false);
+        // Order matters: the punishment lands after the detach, or the detach undoes it.
         this.chain = 0;
         this.winchCharge = WINCH_FLOOR;
-        if (this.anchor) this.release(true);
         this.vy = Math.min(this.vy, 0) - STUN_DROP;
+        // Wings are deliberately NOT taken. They are the recovery tool, and confiscating
+        // them at the exact moment you are stunned and falling turned one mistake into a
+        // death sentence (expert runs fell 161m -> 75m). A hit should cost tempo, not
+        // remove your ability to save yourself.
       }
     }
     this.bolts = this.bolts.filter((b) => b.y > this.camY - this.viewH);
@@ -635,6 +659,11 @@ export class ProtoEngine {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, VIEW_W, this.viewH);
 
+    ctx.save();
+    if (this.shake > 0) {
+      ctx.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake);
+    }
+
     this.drawAltitudeGrid(ctx);
     this.drawCheckpoints(ctx);
     this.drawBolts(ctx);
@@ -720,10 +749,28 @@ export class ProtoEngine {
       ctx.stroke();
 
       ctx.fillStyle = "#fff";
-      ctx.fillRect(x - size / 2, psy - size / 2, size, size);
+      if (this.stunTime > 0) {
+        // Tumbling, not flying: you can see at a glance that you are not in control
+        ctx.save();
+        ctx.translate(x, psy);
+        ctx.rotate((STUN_TIME - this.stunTime) * 14);
+        ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(this.time * 30));
+        ctx.fillRect(-size / 2, -size / 2, size, size);
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.fillRect(x - size / 2, psy - size / 2, size, size);
+      }
     }
 
     this.drawOffscreenMarker(ctx);
+    ctx.restore();
+
+    if (this.hitFlash > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${this.hitFlash * 0.55})`;
+      ctx.fillRect(0, 0, VIEW_W, this.viewH);
+    }
+
     this.drawHud(ctx);
   }
 
@@ -951,12 +998,24 @@ export class ProtoEngine {
     ctx.fillText(`${Math.round(this.lastReleaseQuality * 100)}%`, 212, 116);
 
     if (this.stunTime > 0) {
+      const cx = VIEW_W / 2;
+      const cy = this.viewH * 0.4;
       ctx.textAlign = "center";
-      ctx.font = "bold 24px ui-monospace, monospace";
+      ctx.font = "bold 26px ui-monospace, monospace";
       ctx.fillStyle = "#fff";
-      ctx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(this.time * 22));
-      ctx.fillText("ÉTOURDI", VIEW_W / 2, this.viewH * 0.42);
+      ctx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(this.time * 24));
+      ctx.fillText("ÉTOURDI", cx, cy);
       ctx.globalAlpha = 1;
+      ctx.font = "12px ui-monospace, monospace";
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.fillText("chaîne perdue · treuil vidé", cx, cy + 20);
+      // Countdown to regaining control
+      const w = 130;
+      ctx.strokeStyle = "rgba(255,255,255,0.5)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cx - w / 2, cy + 30, w, 7);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(cx - w / 2 + 1, cy + 31, (w - 2) * (this.stunTime / STUN_TIME), 5);
       ctx.textAlign = "left";
     }
 

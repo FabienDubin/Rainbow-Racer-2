@@ -174,3 +174,11 @@ export const BOLT_THICKNESS = 34; // px of live lane
 export const BOLT_ROWS_APART = 3; // one thunderhead every N anchor rows, at most
 export const STUN_TIME = 0.55; // s of no control after a hit
 export const STUN_DROP = 260; // px/s downward kick, so a hit visibly costs you altitude
+
+// ---- Impact feedback ----
+// Being hit already cost a lot — chain reset, winch dumped to its floor, upward momentum
+// cancelled, half a second of no control — but none of it was visible, so it read as
+// nothing more than "my rope vanished". These make the hit unmistakable.
+export const HIT_STOP = 0.07; // s of frozen frame on impact — the classic weight cue
+export const HIT_FLASH = 1.0; // starting intensity of the white flash
+export const HIT_SHAKE = 14; // px of screen shake on impact

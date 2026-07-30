@@ -54,6 +54,11 @@ hidden behind "it's a bit weird". Keep them running as the physics changes.
 - **phase1render.js** — asserts the palier lines and each bolt state actually draw, and
   that the strike lane hits inside and misses just outside.
 
+- **hit.js** — every consequence of taking a bolt, and whether each one is actually
+  drawn. Caught the punishment being silently undone: the stunned detach went through the
+  normal release path, which re-scored the release and handed back the winch charge, a
+  chain link and fresh wings. Being hit was rewarding you.
+
 - **marker.js** — the off-screen indicator. Uses a canvas stub that *records* draw
   calls instead of discarding them, so placement and rotation can be asserted without a
   browser. Handy pattern for any other HUD element that is hard to catch on camera.
