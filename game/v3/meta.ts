@@ -96,6 +96,8 @@ export interface MetaState {
   runs: number;
   bestM: number;
   lotteriesPlayed: number;
+  giftsTaken: number; // gifts actually collected
+  sinceGiftOffered: number; // lotteries since one last held a gift
 }
 
 const EMPTY: MetaState = {
@@ -107,6 +109,8 @@ const EMPTY: MetaState = {
   runs: 0,
   bestM: 0,
   lotteriesPlayed: 0,
+  giftsTaken: 0,
+  sinceGiftOffered: 99, // a brand-new player is due one immediately
 };
 
 export function loadMeta(): MetaState {
@@ -182,14 +186,29 @@ export interface LotteryCard {
 
 const GIFTABLE = ["boost", "talisman", "magnet"];
 
+// Gift cadence, following the casino shape Fab described: first you learn the prize
+// exists, then you wait for it.
+//
+//   runs 1-3 — a gift is guaranteed to appear by the third lottery, but can land sooner.
+//              Putting it strictly on run 1 was worse: you have not understood the loop
+//              yet, so the prize means nothing to you.
+//   after    — roughly one in seven, with a hard pity at ten so a dry streak cannot drag.
+//
+// The counter tracks gifts OFFERED, not taken. Seeing one on the table and picking the
+// wrong card is the gamble, and that near-miss is doing real work.
+export function giftChance(state: MetaState): number {
+  if (state.giftsTaken === 0) {
+    if (state.lotteriesPlayed >= 2) return 1; // by the third, certain
+    return state.lotteriesPlayed === 0 ? 0.4 : 0.6;
+  }
+  if (state.sinceGiftOffered >= 9) return 1; // pity
+  return 1 / 7;
+}
+
 export function rollLottery(runDust: number, state: MetaState): LotteryCard[] {
   const floor = [6, 14, 25];
-  // A player's very first lottery always contains a gift: it teaches what gifts are and
-  // lets them try a consumable without paying for it.
-  const guaranteeGift = state.lotteriesPlayed === 0;
-  const giftIndex = guaranteeGift || Math.random() < 0.25
-    ? Math.floor(Math.random() * 3)
-    : -1;
+  const giftIndex =
+    Math.random() < giftChance(state) ? Math.floor(Math.random() * 3) : -1;
 
   const cards = [0, 1, 2].map((i) => {
     const share = Math.round(runDust * (0.15 + i * 0.2));
@@ -208,16 +227,34 @@ export function rollLottery(runDust: number, state: MetaState): LotteryCard[] {
   return cards;
 }
 
-export function applyCard(state: MetaState, card: LotteryCard): MetaState {
+// `offeredGift` is whether ANY of the three cards held one, which is what drives the
+// cadence — distinct from whether the player actually picked it up.
+export function applyCard(
+  state: MetaState,
+  card: LotteryCard,
+  offeredGift: boolean
+): MetaState {
   const next: MetaState = {
     ...state,
     dust: state.dust + card.dust,
     lotteriesPlayed: state.lotteriesPlayed + 1,
+    sinceGiftOffered: offeredGift ? 0 : state.sinceGiftOffered + 1,
   };
-  if (card.gift && !next.consumables.includes(card.gift)) {
-    next.consumables = [...next.consumables, card.gift];
+  if (card.gift) {
+    next.giftsTaken = state.giftsTaken + 1;
+    if (!next.consumables.includes(card.gift)) {
+      next.consumables = [...next.consumables, card.gift];
+    }
   }
   return next;
+}
+
+// Wipes progress. Exists because a browser can inherit somebody else's local state —
+// mine leaked 700 dust into Fab's game while I was checking the shop's price tiers.
+export function resetMeta(): MetaState {
+  const fresh = { ...EMPTY };
+  saveMeta(fresh);
+  return fresh;
 }
 
 // ---------------------------------------------------------------- transactions

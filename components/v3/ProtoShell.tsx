@@ -20,6 +20,7 @@ import {
   loadMeta,
   MetaState,
   recordRun,
+  resetMeta,
   rollLottery,
   saveMeta,
   startRun,
@@ -79,7 +80,8 @@ export default function ProtoShell() {
   const pickCard = (i: number) => {
     if (picked !== null) return;
     setPicked(i);
-    persist(applyCard(loadMeta(), cards[i]));
+    // Cadence follows whether a gift was on the TABLE, not whether this card had it
+    persist(applyCard(loadMeta(), cards[i], cards.some((c) => c.gift !== null)));
   };
 
   // Enter advances the end-of-run flow, so "one more run" stays one key away
@@ -121,7 +123,7 @@ export default function ProtoShell() {
           <dd>arriver vite sur une ancre basse relance plus haut</dd>
           <dt>Poussière</dt>
           <dd>
-            les points suivent la route, les anneaux valent triple mais sont hors ligne
+            les points suivent la route, les anneaux valent double mais sont hors ligne
           </dd>
           <dt>Paliers</dt>
           <dd>de plus en plus espacés ; les franchir repousse l&apos;orage</dd>
@@ -289,6 +291,16 @@ export default function ProtoShell() {
                 </div>
                 <button className="proto-btn" onClick={play}>
                   Jouer <small>(Entrée)</small>
+                </button>
+                <button
+                  className="proto-reset"
+                  onClick={() => {
+                    if (confirm("Effacer la poussière et les achats ?")) {
+                      setMeta(resetMeta());
+                    }
+                  }}
+                >
+                  réinitialiser la progression
                 </button>
               </>
             )}

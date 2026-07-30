@@ -350,3 +350,17 @@
   line-height: 1.4;
   color: rgba(255, 255, 255, 0.5);
 }
+
+.proto-reset {
+  font-family: inherit;
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.35);
+  background: transparent;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0.25rem;
+}
+
+.proto-reset:hover { color: rgba(255, 255, 255, 0.7); }

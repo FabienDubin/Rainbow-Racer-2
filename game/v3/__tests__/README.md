@@ -58,6 +58,9 @@ hidden behind "it's a bit weird". Keep them running as the physics changes.
   profiles Fab gave me (80m beginner, 147m relaxed, 650m serious). Prices are checked as
   "how many runs to afford this", per profile. Never price against bots: they top out at
   75m and a real player does 650m.
+- **gifts.js** — prints the gift cadence as a 30-run timeline (taken / seen-but-missed /
+  nothing) plus average and worst-case gaps over 400 runs. Cadence is the kind of thing
+  that has to be *read* rather than reasoned about.
 - **metaflow.js** — the meta state machine: buying, duplicate and broke rejections,
   consumables being spent on run start, and a mode counting down exactly three runs. Also
   caught the lottery dealing its cards in ascending order, which made "pick one of three"
