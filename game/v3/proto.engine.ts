@@ -30,7 +30,7 @@ import {
   GRAB_COOLDOWN, REEL_SPEED, REF_RELEASE_SPEED, REGRAB_LOCKOUT, ROPE_MIN, ROW_MARGIN_X,
   ROW_SPACING, WRAP_MARGIN, BOLT_ARM_RANGE, BOLT_COOLDOWN, BOLT_ROWS_APART, RAIDER_FLEE_SPEED,
   BOLT_START_M, BOLT_STRIKE, BOLT_TELEGRAPH, BOLT_THICKNESS,
-  CHECKPOINT_PUSHBACK, STUN_DROP, STUN_TIME, HIT_FLASH, HIT_SHAKE, HIT_STOP,
+  CHECKPOINT_PUSHBACK, CHECKPOINT_BREATH, STUN_DROP, STUN_TIME, HIT_FLASH, HIT_SHAKE, HIT_STOP,
   GUST_DOWN_FORCE, GUST_HEIGHT_MAX, GUST_HEIGHT_MIN, GUST_ROWS_APART, GUST_START_M,
   GUST_UP_ACCEL, GUST_UP_GRAVITY, GUST_UP_MAX,
   GUST_UP_CHANCE, GUST_WIDTH_MAX, GUST_WIDTH_MIN,
@@ -38,7 +38,7 @@ import {
   RAIDER_ROWS_APART, RAIDER_SPEED, RAIDER_START_M, RAIDER_STEAL,
   CHECKPOINT_FIRST_M, CHECKPOINT_GROWTH, DUST_BONUS_CHANCE, DUST_BONUS_VALUE,
   DUST_LINE_PER_ROW, DUST_MAGNET_RADIUS, DUST_RADIUS,
-  START_VY, STORM_ACCEL, STORM_SPEED_BASE, STORM_START_BELOW,
+  START_VY, STORM_LAG_START, STORM_LAG_MIN, STORM_LAG_TAU,
   STREAK_COUNT, STREAK_MAX_SPEED, STREAK_MIN_SPEED, SWING_PUMP, SWING_RECOVERY_DRIVE,
   SWING_STALL_FLOOR, RELEASE_KICK, TETHER_RANGE, VIEW_H, VIEW_W, WHIP_RECOVERY,
   WINCH_BUDGET, WINCH_FLOOR,
@@ -130,7 +130,8 @@ export class ProtoEngine {
   private skipsTaken = 0; // high rungs reached — the expert-play payoff
   private winchCharge = 1; // 0..1, set by the quality of your last release
   private lastReleaseQuality = 1;
-  private stormY = -STORM_START_BELOW; // Le Grondement, rising from below
+  private stormY = -STORM_LAG_START; // Le Grondement, a floor trailing your best height
+  private breath = 0; // extra room bought by the last palier, given back over CHECKPOINT_BREATH
   private bolts: Bolt[] = [];
   private stunTime = 0; // s of lost control after being hit
   private hits = 0;
@@ -218,7 +219,7 @@ export class ProtoEngine {
     if (this.cfg.startBoost) {
       this.py = 30 * PX_PER_METER;
       this.peakY = this.py;
-      this.stormY = this.py - STORM_START_BELOW;
+      this.stormY = this.py - STORM_LAG_START;
     }
     this.camY = this.py + (0.5 - CAM_PLAYER_SCREEN_FRAC) * this.viewH * -1;
     this.generateUpTo(this.camY + this.viewH * 1.5);
@@ -455,7 +456,7 @@ export class ProtoEngine {
       this.checkpoints++;
       this.checkpointGap *= CHECKPOINT_GROWTH;
       this.nextCheckpointM += this.checkpointGap;
-      this.stormY -= CHECKPOINT_PUSHBACK;
+      this.breath = CHECKPOINT_PUSHBACK; // the storm sags, then closes back in
       this.checkpointToast = 2.2;
       audio.palier();
       haptic([12, 60, 12]);
@@ -505,8 +506,14 @@ export class ProtoEngine {
     // ---- Éclairs
     this.updateBolts(dt);
 
-    // ---- Le Grondement rises, and accelerates
-    this.stormY += (STORM_SPEED_BASE + STORM_ACCEL * this.time) * this.cfg.stormFactor * dt;
+    // ---- Le Grondement: a floor that trails your PEAK, tightening as the run goes.
+    // Anchored to peakY, not py, so falling never drags the danger down with you — which is
+    // exactly what a rubber band on the live position would do, making a fall survivable
+    // forever. Monotonic upward except for the breath a palier buys.
+    this.breath = Math.max(0, this.breath - (CHECKPOINT_PUSHBACK / CHECKPOINT_BREATH) * dt);
+    const squeeze = STORM_LAG_MIN + (STORM_LAG_START - STORM_LAG_MIN) * Math.exp(-this.time / STORM_LAG_TAU);
+    const lag = (squeeze + this.breath) / this.cfg.stormFactor;
+    this.stormY = Math.max(this.stormY, this.peakY - lag);
 
     // ---- Fail: caught by the storm, or dropped off the bottom of the view
     if (this.py < this.stormY) this.end();

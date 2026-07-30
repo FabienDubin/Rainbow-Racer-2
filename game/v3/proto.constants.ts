@@ -88,12 +88,25 @@ export const MAX_ATTACH_TIME_DIVE = 3.2;
 // This is the pacer that gives the verb its meaning. Absolute altitude is not the
 // goal — outrunning this is. It closes every degenerate strategy for free: hang
 // around on one rung, or spam the input, and it simply eats you.
-export const STORM_START_BELOW = 1400; // px below the player at spawn — room to learn
+// LE GRONDEMENT — a trailing floor, not a wave from far below.
+//
+// It used to start 1400px under the player and integrate upward at 55 + 1.1t px/s. Measured
+// over 24 seeds: it was on screen 2.5% of the time for a skilled player and NEVER for a
+// careless one, closest approach 477px while only 365px of world is visible below the
+// player. Fab: "jamais je vois l'orage monter, je ne vois rien de tout ça." He was right —
+// it was decorative. Worse, it almost never did the killing: runs ended on an invisible
+// view-margin rule instead, which is the same punishment with none of the meaning.
+//
+// Now it sits a shrinking distance below your BEST height. Monotonic, always framed, and it
+// is the thing that ends the run.
+export const STORM_LAG_START = 520; // px below your peak at t=0 — matches the old lethal fall
+export const STORM_LAG_MIN = 330; // px it tightens to — right under your feet late in a run
+export const STORM_LAG_TAU = 80; // s — time constant of the squeeze
+export const STORM_HAZE = 320; // px of cloud mass drawn ABOVE the lip, so it reaches the frame
 // A single good swing climbs at 10-17 m/s, but sustained play measured far lower:
 // most of the time goes into the transition between rungs. The storm is tuned
 // against the sustained rate, not the peak, or it kills everyone in 6 seconds.
-export const STORM_SPEED_BASE = 55; // px/s ≈ 1.8 m/s, gentle at first
-export const STORM_ACCEL = 1.1; // px/s² — ~4 m/s at 1min, ~6 m/s at 2min
+// Kept only so a mode can still scale the pressure (stormFactor multiplies the lag)
 export const MIN_SWING_ANGLE = 0.35; // rad (~20°) — below this a release is a "slip":
                                      // no chain credit, no wing refill. Kills spam.
 export const REGRAB_LOCKOUT = 0.35; // s before the anchor you just left can be grabbed again
@@ -113,7 +126,9 @@ export const CHAIN_DROP_TOLERANCE = 260; // fall this far below your peak → ch
 // ---- Camera ----
 export const CAM_PLAYER_SCREEN_FRAC = 0.62; // player sits this far down the view
 export const CAM_FOLLOW_SPEED = 7;
-export const DEATH_MARGIN = 120; // px below the view before the run ends
+// Pure backstop now. The storm kills at 520px max, so this only catches a fall that somehow
+// outruns it; it must stay well below, or it steals the storm's job again.
+export const DEATH_MARGIN = 640; // px below the view before the run ends
 
 // ---- World generation ----
 export const ROW_SPACING = 195; // vertical gap between anchor rows
@@ -153,7 +168,12 @@ export const CAM_SPEED_LOOKAHEAD = 0.16; // how far ahead the camera leans, per 
 // gives six. Gaps: 50, 112, 190, 288, 410, 563, 754…
 export const CHECKPOINT_FIRST_M = 50;
 export const CHECKPOINT_GROWTH = 1.25;
-export const CHECKPOINT_PUSHBACK = 260; // px the storm loses when you cross one
+export const CHECKPOINT_PUSHBACK = 260; // px of extra breathing room a palier buys
+export const CHECKPOINT_BREATH = 2; // s over which that room is taken back
+// Measured, and it mattered more than the lag: at 7s the breath was worth +13m to the
+// greedy fast climber and nothing to the patient one, dragging the skill gradient from
+// x1.8 down to x1.5. Tightening the LAG instead made it worse (x1.4 at 470, x1.3 at 430) —
+// a tight floor punishes the player who takes time to aim. A 2s sag restores x1.7.
 
 // ---- PHASE 1: les Éclairs ----
 // Danger you read, not danger you're unlucky about: a thunderhead flashes, and only

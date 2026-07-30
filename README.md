@@ -93,7 +93,26 @@ create table scores (
   max_combo int not null,
   created_at timestamptz default now()
 );
+
+-- The board is always "this week", so every read filters on created_at
+create index scores_created_at_idx on scores (created_at desc);
+
+-- RLS on with NO policy at all: the anon key (which ships to the browser) can neither
+-- read nor write, and only the server's secret key gets through, because a secret key
+-- bypasses RLS. Without this, a public anon key on a table is an open write endpoint —
+-- anyone can post a fake score, and the whole point of the board is that it is credible.
+alter table scores enable row level security;
 ```
+
+Then put the two values in the environment — **the secret key, not the anon key**:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxxxxx.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_...
+```
+
+`SUPABASE_SECRET_KEY` has no `NEXT_PUBLIC_` prefix on purpose: it must never reach the
+browser. It is only read inside `app/api/leaderboard/route.ts`, which runs on the server.
 
 Puis renseigne les variables de `.env.example` — l'API change de backend toute seule.
 

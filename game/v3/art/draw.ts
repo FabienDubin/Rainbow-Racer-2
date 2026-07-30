@@ -7,7 +7,10 @@
 // clashed, and Fab called it: "elle va pas du tout avec le reste". Continuity now lives in
 // the palette and the spirit rather than in a reused file.
 
+import { STORM_HAZE } from "../proto.constants";
 import { SkyState, SPECTRUM } from "./palette";
+
+const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 // Samples the spectrum as a continuous loop, so a gradient can be offset over time and
 // flow smoothly instead of stepping between six fixed bands.
@@ -529,7 +532,32 @@ export function drawStorm(
   time: number,
   gapM: number
 ): void {
-  if (topY > cam.viewH + 40) return;
+  // The lip can sit below the view while the run is going well. Draw the cloud MASS above
+  // it anyway — anvil tops, haze, a glow — or the threat only exists in the frame you die.
+  if (topY > cam.viewH + STORM_HAZE) return;
+
+  // Haze above the lip: faint when you are safe, thick when it is about to have you
+  const near = clamp01(1 - (topY - cam.viewH) / STORM_HAZE);
+  if (topY > cam.viewH - 10) {
+    const haze = ctx.createLinearGradient(0, topY - STORM_HAZE, 0, topY);
+    haze.addColorStop(0, "rgba(46,22,74,0)");
+    haze.addColorStop(1, `rgba(40,18,66,${(0.34 + 0.3 * near).toFixed(3)})`);
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, topY - STORM_HAZE, cam.viewW, STORM_HAZE + 4);
+
+    // Anvil tops boiling up out of it, so the mass reads as cloud and not as a gradient
+    ctx.save();
+    ctx.fillStyle = `rgba(58,28,92,${(0.3 + 0.34 * near).toFixed(3)})`;
+    for (let i = 0; i < 7; i++) {
+      const cx = ((i * 137 + Math.sin(time * 0.24 + i) * 26) % (cam.viewW + 160)) - 80;
+      const r = 62 + Math.sin(i * 2.1) * 22;
+      const cy = topY - 34 - Math.abs(Math.sin(i * 1.7 + time * 0.3)) * 92;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
 
   const g = ctx.createLinearGradient(0, topY, 0, cam.viewH);
   g.addColorStop(0, "rgba(30,16,48,0.72)");
@@ -574,7 +602,9 @@ export function drawStorm(
   ctx.textAlign = "center";
   ctx.font = "600 12px ui-monospace, monospace";
   ctx.fillStyle = gapM < 12 ? "#ffd0d0" : "rgba(255,255,255,0.72)";
-  ctx.fillText(`ORAGE  ${Math.max(0, Math.round(gapM))} m`, cam.viewW / 2, topY + 30);
+  // Pinned inside the view: the label is the warning, so it cannot scroll out with the lip
+  const labelY = Math.min(topY + 30, cam.viewH - 14);
+  ctx.fillText(`ORAGE  ${Math.max(0, Math.round(gapM))} m`, cam.viewW / 2, labelY);
   ctx.restore();
 }
 
@@ -586,6 +616,17 @@ export function drawPalier(
   label: string,
   crossed: boolean
 ): void {
+  // A real bow, not a ruled line. It already had an arc, but 16px of rise across the whole
+  // width reads as straight — Fab asked for "une légère courbe comme un bout d'arc-en-ciel".
+  // A quadratic's apex sits at (start + 2*control + end)/4, so the control point has to
+  // overshoot well past the crown to land it: ends at +20, apex at -34, control at -88.
+  const END = 20;
+  const CTRL = -88;
+  const bow = (dy: number) => {
+    ctx.moveTo(0, y + dy + END);
+    ctx.quadraticCurveTo(viewW / 2, y + dy + CTRL, viewW, y + dy + END);
+  };
+
   ctx.save();
   if (crossed) {
     ctx.globalAlpha = 0.18;
@@ -593,26 +634,24 @@ export function drawPalier(
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 9]);
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(viewW, y);
+    bow(0);
     ctx.stroke();
   } else {
     SPECTRUM.forEach((colour, i) => {
       ctx.strokeStyle = colour;
       ctx.globalAlpha = 0.85;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.4;
       ctx.beginPath();
-      const off = (i - (SPECTRUM.length - 1) / 2) * 2.4;
-      // A shallow arc, like a bridge rather than a ruled line
-      ctx.moveTo(0, y + off + 7);
-      ctx.quadraticCurveTo(viewW / 2, y + off - 9, viewW, y + off + 7);
+      // Bands fan apart towards the crown, the way a rainbow's do
+      bow((i - (SPECTRUM.length - 1) / 2) * 2.8);
       ctx.stroke();
     });
     ctx.globalAlpha = 1;
     ctx.textAlign = "right";
     ctx.font = "600 11px ui-monospace, monospace";
     ctx.fillStyle = "rgba(255,255,255,0.85)";
-    ctx.fillText(label, viewW - 10, y - 16);
+    // Clear of the crown, which now sits 34px above the nominal line
+    ctx.fillText(label, viewW - 10, y - 52);
   }
   ctx.restore();
 }
