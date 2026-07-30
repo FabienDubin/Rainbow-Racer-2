@@ -21,7 +21,7 @@ const CELLS: Cell[] = [
     label: "Montée",
     note: "ailes qui battent, jambes repliées",
     pose: () => ({
-      vx: 90, vy: 560, scale: 3, tumbling: 0, tethered: false, hangAngle: null,
+      vx: 90, vy: 560, scale: 3, tumbling: 0, tethered: false, hangAngle: null, facing: 1, wingBoost: 0,
       flapPulse: 0.85, justAttached: 0, justReleased: 0,
     }),
   },
@@ -29,7 +29,7 @@ const CELLS: Cell[] = [
     label: "Vol plané",
     note: "bras écartés, ailes tendues",
     pose: () => ({
-      vx: 240, vy: -420, scale: 3, tumbling: 0, tethered: false, hangAngle: null,
+      vx: 240, vy: -420, scale: 3, tumbling: 0, tethered: false, hangAngle: null, facing: 1, wingBoost: 0,
       flapPulse: 0, justAttached: 0, justReleased: 0,
     }),
   },
@@ -37,7 +37,7 @@ const CELLS: Cell[] = [
     label: "Accrochée",
     note: "bras en l\u2019air, le corps pend sous la corde",
     pose: () => ({
-      vx: 480, vy: 120, scale: 3, tumbling: 0, tethered: true, hangAngle: -1.05,
+      vx: 480, vy: 120, scale: 3, tumbling: 0, tethered: true, hangAngle: -1.05, facing: 1, wingBoost: 0,
       flapPulse: 0, justAttached: 0, justReleased: 0,
     }),
     tether: true,
@@ -46,7 +46,7 @@ const CELLS: Cell[] = [
     label: "Au lâcher",
     note: "ailes grandes ouvertes, anneau de lumière",
     pose: () => ({
-      vx: 120, vy: 780, scale: 3, tumbling: 0, tethered: false, hangAngle: null,
+      vx: 120, vy: 780, scale: 3, tumbling: 0, tethered: false, hangAngle: null, facing: 1, wingBoost: 0,
       flapPulse: 0.4, justAttached: 0, justReleased: 0.75,
     }),
   },
@@ -54,16 +54,49 @@ const CELLS: Cell[] = [
     label: "À l'accroche",
     note: "recul du corps, une seconde de compression",
     pose: () => ({
-      vx: 300, vy: 200, scale: 3, tumbling: 0, tethered: true, hangAngle: -1.3,
+      vx: 300, vy: 200, scale: 3, tumbling: 0, tethered: true, hangAngle: -1.3, facing: 1, wingBoost: 0,
       flapPulse: 0, justAttached: 0.9, justReleased: 0,
     }),
     tether: true,
   },
   {
+    label: "Presque à l'arrêt",
+    note: "rubans courts et lâches, grande vague paresseuse",
+    pose: () => ({
+      vx: 20, vy: 40, scale: 3, tumbling: 0, tethered: false, hangAngle: null, facing: 1, wingBoost: 0,
+      flapPulse: 0.2, justAttached: 0, justReleased: 0,
+    }),
+  },
+  {
+    label: "Pleine vitesse",
+    note: "tendus par le flux : plus longs, presque droits",
+    pose: () => ({
+      vx: 700, vy: 900, scale: 3, tumbling: 0, tethered: false, hangAngle: null, facing: 1, wingBoost: 0,
+      flapPulse: 0.9, justAttached: 0, justReleased: 0,
+    }),
+  },
+  {
+    label: "Accrochée, retour",
+    note: "le balancier la ramène : elle se retourne dans le sens du mouvement",
+    pose: () => ({
+      vx: -520, vy: 90, scale: 3, tumbling: 0, tethered: true, hangAngle: -2.1,
+      facing: -1, wingBoost: 0, flapPulse: 0, justAttached: 0, justReleased: 0,
+    }),
+    tether: true,
+  },
+  {
+    label: "Ailes renforcées",
+    note: "l'achat se voit : ailes plus grandes, liseré spectre",
+    pose: () => ({
+      vx: 120, vy: 600, scale: 3, tumbling: 0, tethered: false, hangAngle: null,
+      facing: 1, wingBoost: 1, flapPulse: 0.8, justAttached: 0, justReleased: 0,
+    }),
+  },
+  {
     label: "Étourdie",
     note: "elle vrille, l'œil se ferme",
     pose: () => ({
-      vx: -60, vy: -300, scale: 3, tumbling: 0.3, tethered: false, hangAngle: null,
+      vx: -60, vy: -300, scale: 3, tumbling: 0.3, tethered: false, hangAngle: null, facing: 1, wingBoost: 0,
       flapPulse: 0, justAttached: 0, justReleased: 0,
     }),
   },

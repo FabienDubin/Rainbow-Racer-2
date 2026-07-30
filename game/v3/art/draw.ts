@@ -487,6 +487,16 @@ export interface PrismPose {
    * body is rotated to hang from it, which is what makes a rope read as a rope.
    */
   hangAngle: number | null;
+  /**
+   * +1 facing right, -1 facing left. Held by the engine with a deadband rather than
+   * derived here, so she does not flicker as horizontal speed crosses zero.
+   */
+  facing: number;
+  /**
+   * Extra wing charges bought in the shop. Purely for the drawing: an upgrade you cannot
+   * SEE on the character is a wasted upgrade, so bigger wings with a spectrum edge.
+   */
+  wingBoost: number;
   /** 0..1, decays after each wingbeat. */
   flapPulse: number;
   /** 0..1, decays after catching an anchor. */
@@ -506,10 +516,14 @@ export interface PrismPose {
 export function prismBodyAngle(pose: PrismPose): number {
   if (pose.tumbling > 0) return pose.tumbling * 14;
   if (pose.tethered && pose.hangAngle !== null) {
-    // Hang from the rope: the body's own "up" (-y) is aimed at the anchor
+    // Hang from the rope: the body's own "up" (-y) is aimed at the anchor. Mirroring for
+    // facing happens after this and leaves the y axis alone, so the hang still holds.
     return pose.hangAngle + Math.PI / 2;
   }
-  return Math.max(-0.6, Math.min(0.6, -pose.vy / 1500 + pose.vx / 3600));
+  // Multiplied by facing because the mirror is applied after the rotation: without it she
+  // would tilt nose-down whenever she flew leftward.
+  const lean = -pose.vy / 1500 + Math.abs(pose.vx) / 3600;
+  return pose.facing * Math.max(-0.6, Math.min(0.6, lean));
 }
 
 /** Where the hands are, in screen space relative to the character's centre. */
@@ -600,7 +614,10 @@ export function drawPrism(ctx: CanvasRenderingContext2D, x: number, y: number, p
   const dive = Math.max(0, Math.min(1, -vy / 700));
   const speed = Math.hypot(vx, vy);
   const beat = Math.sin(time * 15);
-  const whip = 1 + Math.min(1.1, speed / 800);
+  // Streamers are pulled TAUT by speed, not whipped up by it — I had this backwards.
+  // Fast: longer and straighter. Slow: short and loose, with a big lazy wave.
+  const stretch = 1 + Math.min(0.7, speed / 1100);
+  const slack = 1 - Math.min(0.8, speed / 1050);
   const flow = (t: number) => spectrumAt(t - time * 0.4);
 
   let wingDeg = 198 + climb * 14 + beat * (8 + climb * 16) + flapPulse * 18;
@@ -621,33 +638,73 @@ export function drawPrism(ctx: CanvasRenderingContext2D, x: number, y: number, p
   ctx.scale(scale, scale);
   ctx.rotate(prismBodyAngle(pose));
   if (tumbling > 0) ctx.globalAlpha = 0.7 + 0.3 * Math.abs(Math.sin(tumbling * 30));
-  ctx.scale(squashX, squashY);
+  ctx.scale(squashX * pose.facing, squashY);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
   const rad = (d: number) => (d * Math.PI) / 180;
 
-  // A rounded fabric wing rather than a feathered blade
-  const fabricWing = (deg: number, len: number, fill: string | CanvasGradient) => {
-    const a = rad(deg);
-    const tipX = Math.cos(a) * len;
-    const tipY = -6 + Math.sin(a) * len;
-    const midA = rad(deg + 26);
-    ctx.fillStyle = fill;
+  // Butterfly wings: a forewing and a smaller hindwing, drawn in a rotated frame so the
+  // shape can be authored cleanly along +x and then simply aimed.
+  const butterflyWing = (deg: number, len: number, alpha: number, detail: boolean) => {
+    len *= 1 + pose.wingBoost * 0.24;
+    ctx.save();
+    ctx.translate(-1, -6);
+    ctx.rotate(rad(deg));
+    ctx.globalAlpha *= alpha;
+
+    const fore = ctx.createLinearGradient(0, 0, len, -len * 0.2);
+    fore.addColorStop(0, "#ffd3e8");
+    fore.addColorStop(0.55, "#ff9ecb");
+    fore.addColorStop(1, "#f56fb0");
+    ctx.fillStyle = fore;
     ctx.beginPath();
-    ctx.moveTo(-1, -6);
-    ctx.quadraticCurveTo(Math.cos(a) * len * 0.55 - 4, tipY * 0.55 - 5, tipX, tipY);
-    ctx.quadraticCurveTo(
-      Math.cos(midA) * len * 0.78,
-      -5 + Math.sin(midA) * len * 0.78,
-      2,
-      -3
-    );
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(len * 0.32, -len * 0.5, len * 0.92, -len * 0.3);
+    ctx.quadraticCurveTo(len * 1.08, -len * 0.02, len * 0.6, len * 0.09);
+    ctx.quadraticCurveTo(len * 0.28, len * 0.15, 0, 0);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.9)";
-    ctx.lineWidth = 1;
+
+    const hind = ctx.createLinearGradient(0, 0, len * 0.6, len * 0.3);
+    hind.addColorStop(0, "#ffc0dd");
+    hind.addColorStop(1, "#ef62a6");
+    ctx.fillStyle = hind;
+    ctx.beginPath();
+    ctx.moveTo(0, 1);
+    ctx.quadraticCurveTo(len * 0.3, len * 0.28, len * 0.6, len * 0.34);
+    ctx.quadraticCurveTo(len * 0.7, len * 0.12, len * 0.44, len * 0.04);
+    ctx.quadraticCurveTo(len * 0.2, 0, 0, 1);
+    ctx.closePath();
+    ctx.fill();
+
+    if (detail) {
+      // Veins and two pale eyespots — the cues that say butterfly rather than petal
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.lineWidth = 0.8;
+      for (const t of [-0.3, -0.12, 0.04]) {
+        ctx.beginPath();
+        ctx.moveTo(len * 0.06, 0);
+        ctx.quadraticCurveTo(len * 0.5, t * len * 0.9, len * 0.88, t * len * 0.8);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.beginPath();
+      ctx.arc(len * 0.66, -len * 0.22, len * 0.075, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(len * 0.44, -len * 0.28, len * 0.05, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Leading edge. Reinforced wings get a spectrum rim, so the purchase is visible.
+    ctx.strokeStyle = pose.wingBoost > 0 ? spectrumAt(time * 0.3) : "rgba(255,255,255,0.75)";
+    ctx.lineWidth = pose.wingBoost > 0 ? 1.6 : 0.9;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(len * 0.32, -len * 0.5, len * 0.92, -len * 0.3);
     ctx.stroke();
+    ctx.restore();
   };
 
   // ---------- Ribbons off the shoulders, undulating ----------
@@ -655,20 +712,20 @@ export function drawPrism(ctx: CanvasRenderingContext2D, x: number, y: number, p
     const off = (i - 1) * 2.1;
     ribbon(
       ctx, -3, -5 + off * 0.6, -1, 0.34,
-      (20 + i * 2) * whip, flow(i / 3), 2.6 - i * 0.35,
-      time, i * 1.5, 3.4 * whip, 1.6
+      (20 + i * 2) * stretch, flow(i / 3), 2.6 - i * 0.35,
+      time, i * 1.5, 4.2 * slack, 1.5 + (1 - slack) * 0.8
     );
   }
 
   // ---------- Far wing ----------
-  fabricWing(wingDeg - 15, wingLen * 0.86, "rgba(186,178,235,0.6)");
+  butterflyWing(wingDeg - 16, wingLen * 0.88, 0.6, false);
 
   // ---------- Costume tail: a short spectrum tuft at the small of the back ----------
   for (let i = 0; i < 3; i++) {
     ribbon(
       ctx, -4, 2.5 + i * 0.6, -1, 0.6,
-      13 + i, flow(0.4 + i / 6), 2.4,
-      time, i * 2.1, 2.2, 1.4
+      (13 + i) * stretch, flow(0.4 + i / 6), 2.4,
+      time, i * 2.1, 2.8 * slack, 1.3 + (1 - slack) * 0.7
     );
   }
 
@@ -768,13 +825,16 @@ export function drawPrism(ctx: CanvasRenderingContext2D, x: number, y: number, p
   ctx.arc(-0.6, -13.6, 7.6, 0, Math.PI * 2);
   ctx.fill();
 
-  // Mane down the back of the hood
+  // Her own hair, blonde-chestnut, escaping from under the hood. Keeping the spectrum for
+  // the ribbons, tail, horn and tether — and giving her real hair — is what separates the
+  // CHILD from the COSTUME she is wearing.
+  const HAIR = ["#e0b374", "#cf9a58", "#e8c68d", "#c98f4e"];
   for (let i = 0; i < 4; i++) {
     const f = i / 4;
     ribbon(
-      ctx, -4.6, -18 + f * 4, -1, 0.85,
-      12 + f * 5, flow(0.05 + f * 0.5), 3 - f * 0.6,
-      time, i * 1.7, 2 * whip, 1.3
+      ctx, -4.4, -17.5 + f * 4.5, -1, 0.9,
+      (13 + f * 5) * stretch, HAIR[i], 3.2 - f * 0.5,
+      time, i * 1.9, 2.6 * slack, 1.2 + (1 - slack) * 0.6
     );
   }
 
@@ -790,6 +850,15 @@ export function drawPrism(ctx: CanvasRenderingContext2D, x: number, y: number, p
   ctx.fillStyle = SKIN;
   ctx.beginPath();
   ctx.arc(2.2, -12.8, 5.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Fringe peeking out under the brim
+  ctx.fillStyle = "#e0b374";
+  ctx.beginPath();
+  ctx.moveTo(-1.6, -17.4);
+  ctx.quadraticCurveTo(3.6, -19.4, 6.6, -15.4);
+  ctx.quadraticCurveTo(3.4, -16.4, -1.6, -17.4);
+  ctx.closePath();
   ctx.fill();
 
   // Hood brim across the brow
@@ -850,10 +919,7 @@ export function drawPrism(ctx: CanvasRenderingContext2D, x: number, y: number, p
   ctx.globalAlpha = tumbling > 0 ? 0.7 + 0.3 * Math.abs(Math.sin(tumbling * 30)) : 1;
 
   // ---------- Near wing ----------
-  const wg = ctx.createLinearGradient(0, -6, Math.cos(rad(wingDeg)) * wingLen, -6);
-  wg.addColorStop(0, "#f6f2ff");
-  wg.addColorStop(1, "rgba(206,196,248,0.95)");
-  fabricWing(wingDeg, wingLen, wg);
+  butterflyWing(wingDeg, wingLen, 1, true);
 
   ctx.restore();
 

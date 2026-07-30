@@ -151,6 +151,7 @@ export class ProtoEngine {
   private flashRelease = 0;
   private flashAttach = 0;
   private flapPulse = 0; // decays after each wingbeat, drives the wing and leg animation
+  private facing = 1; // which way she is turned; a deadband stops it flickering at vx ~ 0
 
   private rafId = 0;
   private lastTs = 0;
@@ -209,6 +210,8 @@ export class ProtoEngine {
       hangAngle: this.anchor
         ? Math.atan2(this.screenY(this.anchor.y) - this.screenY(this.py), this.anchor.x - this.px)
         : null,
+      facing: this.facing,
+      wingBoost: this.cfg.extraWings,
       flapPulse: this.flapPulse,
       justAttached: this.flashAttach,
       justReleased: this.flashRelease,
@@ -303,6 +306,9 @@ export class ProtoEngine {
     this.flashAttach = Math.max(0, this.flashAttach - dt * 3);
     this.whipFlash = Math.max(0, this.whipFlash - dt * 2.5);
     this.flapPulse = Math.max(0, this.flapPulse - dt * 3.6);
+    // Turn to face where she is actually going — swinging backwards looked wrong
+    if (this.vx > 60) this.facing = 1;
+    else if (this.vx < -60) this.facing = -1;
     this.stunTime = Math.max(0, this.stunTime - dt);
     this.checkpointToast = Math.max(0, this.checkpointToast - dt);
     this.hitFlash = Math.max(0, this.hitFlash - dt * 3.5);
