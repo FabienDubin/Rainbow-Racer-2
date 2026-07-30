@@ -38,6 +38,17 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const useSupabase = Boolean(SUPABASE_URL && SUPABASE_KEY && !SUPABASE_URL.includes("your-project"));
 
+// The `scores` table has RLS on with no policy, so ONLY a secret key gets through. A
+// publishable/anon key produces the worst possible failure: reads return HTTP 200 with an
+// empty array (no rows are visible to it) while writes 401, so the board looks like it works
+// and is simply always empty. Fab hit exactly this. Say it out loud instead.
+if (useSupabase && /^sb_publishable|^sbp_/.test(SUPABASE_KEY!)) {
+  console.error(
+    "[leaderboard] SUPABASE_SECRET_KEY holds a PUBLISHABLE key. RLS will block every insert " +
+      "and reads will silently return nothing. Use the secret key (service_role / sb_secret_...)."
+  );
+}
+
 // ---------------- File backend ----------------
 async function fileRead(): Promise<ScoreEntry[]> {
   try {
