@@ -15,6 +15,9 @@
 
 import { RunConfig } from "./meta";
 import { audio, haptic } from "./audio";
+// The HUD is redrawn every frame, so it simply asks for the current language each
+// time — no need to rebuild the engine when the player switches.
+import { t } from "./i18n";
 import { skyAt, SkyState } from "./art/palette";
 import {
   Camera, drawAnchor, drawDustMote, drawGarlandGem, drawGarlandThread, drawParallax,
@@ -1112,7 +1115,13 @@ export class ProtoEngine {
       gap *= CHECKPOINT_GROWTH;
       m += gap;
       if (y < bottom) continue;
-      drawPalier(ctx, this.screenY(y), VIEW_W, `PALIER ${Math.round(thisM)} m`, thisM < this.nextCheckpointM);
+      drawPalier(
+        ctx,
+        this.screenY(y),
+        VIEW_W,
+        t("hud.palier", { n: Math.round(thisM) }),
+        thisM < this.nextCheckpointM
+      );
     }
   }
 
@@ -1223,13 +1232,15 @@ export class ProtoEngine {
 
   // Phase 0 storm: a hatched band. No art, but the pressure has to be legible.
   private drawStorm(ctx: CanvasRenderingContext2D): void {
+    const gapM = (this.py - this.stormY) / PX_PER_METER;
     drawStorm(
       ctx,
       this.camera(),
       this.screenY(this.stormY),
       this.time,
-      (this.py - this.stormY) / PX_PER_METER,
-      this.sky
+      gapM,
+      this.sky,
+      t("hud.storm", { n: Math.max(0, Math.round(gapM)) })
     );
   }
 
@@ -1241,9 +1252,9 @@ export class ProtoEngine {
 
     ctx.font = "14px ui-monospace, monospace";
     ctx.fillStyle = "rgba(255,255,255,0.65)";
-    ctx.fillText(`chaîne ${this.chain}  (max ${this.bestChain})`, 18, 70);
+    ctx.fillText(t("hud.chain", { n: this.chain, max: this.bestChain }), 18, 70);
     ctx.fillText(
-      this.flaps === 0 ? "VOL PUR — aucune aile" : `ailes utilisées ${this.flaps}`,
+      this.flaps === 0 ? t("hud.pureFlight") : t("hud.wingsUsed", { n: this.flaps }),
       18,
       90
     );
@@ -1251,7 +1262,7 @@ export class ProtoEngine {
     // Winch charge: the single most important thing to teach. It shows that the
     // quality of your last release is what buys your next climb.
     ctx.fillStyle = "rgba(255,255,255,0.5)";
-    ctx.fillText("TREUIL", 18, 116);
+    ctx.fillText(t("hud.winch"), 18, 116);
     ctx.strokeStyle = "rgba(255,255,255,0.4)";
     ctx.lineWidth = 1;
     ctx.strokeRect(84, 105, 120, 12);
@@ -1272,11 +1283,11 @@ export class ProtoEngine {
       ctx.font = "bold 26px ui-monospace, monospace";
       ctx.fillStyle = "#fff";
       ctx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(this.time * 24));
-      ctx.fillText("ÉTOURDI", cx, cy);
+      ctx.fillText(t("hud.stunned"), cx, cy);
       ctx.globalAlpha = 1;
       ctx.font = "12px ui-monospace, monospace";
       ctx.fillStyle = "rgba(255,255,255,0.7)";
-      ctx.fillText("chaîne perdue · treuil vidé", cx, cy + 20);
+      ctx.fillText(t("hud.stunnedSub"), cx, cy + 20);
       // Countdown to regaining control
       const w = 130;
       ctx.strokeStyle = "rgba(255,255,255,0.5)";
@@ -1292,9 +1303,9 @@ export class ProtoEngine {
       ctx.globalAlpha = Math.min(1, this.checkpointToast);
       ctx.font = "bold 20px ui-monospace, monospace";
       ctx.fillStyle = "#fff";
-      ctx.fillText("PALIER FRANCHI", VIEW_W / 2, this.viewH * 0.3);
+      ctx.fillText(t("hud.palierToast"), VIEW_W / 2, this.viewH * 0.3);
       ctx.font = "13px ui-monospace, monospace";
-      ctx.fillText("l'orage recule", VIEW_W / 2, this.viewH * 0.3 + 20);
+      ctx.fillText(t("hud.palierToastSub"), VIEW_W / 2, this.viewH * 0.3 + 20);
       ctx.globalAlpha = 1;
       ctx.textAlign = "left";
     }
@@ -1304,12 +1315,16 @@ export class ProtoEngine {
     ctx.fillStyle = speed > STREAK_MIN_SPEED ? "#fff" : "rgba(255,255,255,0.5)";
     ctx.fillText(`${speed} px/s`, 18, 140);
     ctx.fillStyle = "#fff";
-    ctx.fillText(`poussière ${Math.round(this.dustEarned * this.cfg.dustFactor)}`, 18, 180);
+    ctx.fillText(
+      t("hud.dust", { n: Math.round(this.dustEarned * this.cfg.dustFactor) }),
+      18,
+      180
+    );
     if (this.anchor) {
       ctx.fillStyle = "rgba(255,255,255,0.55)";
       const left = Math.max(0, this.attachLimit - this.attachTime);
       ctx.fillText(
-        `${this.divedOn ? "PLONGEON" : "PORTÉ"}  ${left.toFixed(1)}s`,
+        `${this.divedOn ? t("hud.dive") : t("hud.lift")}  ${left.toFixed(1)}s`,
         18,
         160
       );
@@ -1328,6 +1343,10 @@ export class ProtoEngine {
 
     ctx.textAlign = "right";
     ctx.fillStyle = "rgba(255,255,255,0.4)";
-    ctx.fillText(this.anchor ? "ACCROCHÉ — lâche pour partir" : "appuie pour t'accrocher", VIEW_W - 18, this.viewH - 30);
+    ctx.fillText(
+      this.anchor ? t("hud.attached") : t("hud.detached"),
+      VIEW_W - 18,
+      this.viewH - 30
+    );
   }
 }

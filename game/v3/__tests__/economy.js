@@ -58,7 +58,8 @@ for (const u of M.CATALOGUE) {
     return Math.max(1, Math.ceil(u.price / (mid + lottery)));
   });
   console.log(
-    `${(u.name + " (✦" + u.price + ")").padEnd(28)} ${String(cells[0]).padStart(8)}   ${String(cells[1]).padStart(11)}   ${String(cells[2]).padStart(11)}`
+    // Names moved into i18n when the game learned English and German, so ask meta for it
+    `${(M.itemName(u.id) + " (✦" + u.price + ")").padEnd(28)} ${String(cells[0]).padStart(8)}   ${String(cells[1]).padStart(11)}   ${String(cells[2]).padStart(11)}`
   );
 }
 

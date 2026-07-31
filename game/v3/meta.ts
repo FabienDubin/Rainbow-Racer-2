@@ -11,81 +11,42 @@
 //    in 40s, a serious one ~650m in 2-3min. Bots top out around 75m and badly
 //    under-represent a real player, so they are not used for pricing.
 
+import { StringKey, t } from "./i18n";
+
 const STORE_KEY = "rr3.meta";
 
 export type UpgradeKind = "permanent" | "consumable" | "mode";
 
 export interface Upgrade {
   id: string;
-  name: string;
-  blurb: string;
   price: number;
   kind: UpgradeKind;
 }
 
 // Permanents are deliberately about *friction*, not power: they widen your options and
 // raise the floor for a beginner without making a good player untouchable.
+//
+// Only the economy lives here. The name and the blurb are text, so they live with the
+// rest of the text in i18n.ts and are read through itemName/itemBlurb below.
 export const CATALOGUE: Upgrade[] = [
-  {
-    id: "wings",
-    name: "Ailes renforcées",
-    blurb: "Une aile de plus, pour toujours. De quoi se rattraper.",
-    price: 450,
-    kind: "permanent",
-  },
-  {
-    id: "rope",
-    name: "Corde longue",
-    blurb: "Portée du grappin étendue : plus d'ancres, donc plus de routes.",
-    price: 600,
-    kind: "permanent",
-  },
-  {
-    id: "boost",
-    name: "Départ lancé",
-    blurb: "Tu commences à 30 m, l'orage déjà repoussé.",
-    price: 30,
-    kind: "consumable",
-  },
-  {
-    id: "talisman",
-    name: "Talisman",
-    blurb: "Le premier éclair du run te traverse sans te toucher.",
-    price: 45,
-    kind: "consumable",
-  },
-  {
-    id: "magnet",
-    name: "Aimant",
-    blurb: "La poussière vient à toi. Moins de détours.",
-    price: 40,
-    kind: "consumable",
-  },
-  {
-    id: "mode_storm",
-    name: "Orage furieux",
-    blurb: "3 runs : l'orage monte une fois et demie plus vite, poussière doublée.",
-    price: 70,
-    kind: "mode",
-  },
-  {
-    id: "mode_calm",
-    name: "Ciel calme",
-    blurb: "3 runs : aucun éclair, mais moins d'ancres pour se rattraper.",
-    price: 70,
-    kind: "mode",
-  },
-  {
-    id: "mode_pure",
-    name: "Vol pur",
-    blurb: "3 runs : plus d'ailes du tout, poussière et distance comptées x1,5.",
-    price: 70,
-    kind: "mode",
-  },
+  { id: "wings", price: 450, kind: "permanent" },
+  { id: "rope", price: 600, kind: "permanent" },
+  { id: "boost", price: 30, kind: "consumable" },
+  { id: "talisman", price: 45, kind: "consumable" },
+  { id: "magnet", price: 40, kind: "consumable" },
+  { id: "mode_storm", price: 70, kind: "mode" },
+  { id: "mode_calm", price: 70, kind: "mode" },
+  { id: "mode_pure", price: 70, kind: "mode" },
 ];
 
 export const byId = (id: string): Upgrade | undefined =>
   CATALOGUE.find((u) => u.id === id);
+
+/** The shop name of an upgrade, in the language currently selected. */
+export const itemName = (id: string): string => t(`item.${id}.name` as StringKey);
+
+/** Its one-line description, same deal. */
+export const itemBlurb = (id: string): string => t(`item.${id}.blurb` as StringKey);
 
 export interface MetaState {
   dust: number;

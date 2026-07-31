@@ -462,6 +462,55 @@
 
 .proto-mute:hover { color: #fff; background: rgba(0, 0, 0, 0.45); }
 
+/* ---- Language, top-left, the sound button's mirror image ----
+   A real <select> is stretched invisibly over the round pill: the pill shows the
+   two-letter code, the select provides the native picker, the keyboard handling and
+   the accessible name. Nothing custom to re-implement, and it stays 34px. */
+.proto-lang {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 34px;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 17px;
+}
+
+.proto-lang:hover { color: #fff; background: rgba(0, 0, 0, 0.45); }
+
+.proto-lang-code {
+  grid-area: 1 / 1;
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+}
+
+/* Transparent text rather than opacity:0 — an element faded to nothing is treated as
+   hidden by some assistive tech, and this one has to stay reachable. */
+.proto-lang-select {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  appearance: none;
+  font-family: inherit;
+  font-size: 0.7rem;
+  color: transparent;
+  border: none;
+  border-radius: 17px; /* so the keyboard focus ring follows the pill, not a square */
+  background: none;
+  outline-offset: 2px;
+  cursor: pointer;
+}
+
+/* The dropdown itself is drawn by the OS, so it needs readable colours of its own */
+.proto-lang-select option { color: #111; background: #fff; }
+
 /* ---- Name entry, weekly board, rank ---- */
 .proto-name {
   font-family: inherit;

@@ -75,6 +75,22 @@ Entièrement synthétisé en Web Audio, aucun fichier. La partition est **en cou
 couches arrivent avec ta chaîne** : nappe seule quand tu galères, puis basse, arpège,
 batterie, et un lead quand tu enchaînes bien. Ta performance devient audible.
 
+## Les langues
+
+Français, anglais, allemand. Le sélecteur est en haut à gauche, en pendant du bouton de
+son ; il disparaît pendant une partie, où ce coin appartient à l'altimètre. Le choix est
+gardé dans `localStorage`, et à la toute première visite c'est la langue du navigateur qui
+décide.
+
+Tous les textes vivent dans `game/v3/i18n.ts` — y compris les noms et descriptions de la
+boutique, qui ne sont donc plus dans `meta.ts`. Le français est la référence : les deux
+autres sont typées sur son jeu de clés, donc une traduction oubliée est une erreur de
+compilation et non un mot français qui surgit en allemand.
+
+Le HUD est dessiné dans le canvas et se redessine à chaque image : il appelle `t()`
+directement, sans passer par React, donc changer de langue est visible immédiatement même
+au milieu d'une partie.
+
 ## Le classement
 
 Hebdomadaire, remis à zéro chaque lundi — un classement de tous les temps est mort à
@@ -123,6 +139,7 @@ game/v3/
   proto.engine.ts     boucle, physique, collisions, génération
   proto.constants.ts  chaque valeur de réglage, en un seul fichier
   meta.ts             poussière, boutique, loterie, score
+  i18n.ts             tous les textes, en fr / en / de
   audio.ts            musique en couches + SFX + haptique, synthétisés
   art/palette.ts      les sept paliers d'altitude
   art/draw.ts         tout le rendu, en fonctions pures

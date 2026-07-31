@@ -531,7 +531,10 @@ export function drawStorm(
   topY: number,
   time: number,
   gapM: number,
-  sky: SkyState
+  sky: SkyState,
+  // Already translated by the caller. This module stays a set of pure drawing
+  // functions with no ambient state, exactly like drawPalier's label.
+  label: string
 ): void {
   // The lip can sit below the view while the run is going well. Draw the cloud MASS above
   // it anyway — or the threat only exists in the frame you die in.
@@ -688,11 +691,7 @@ export function drawStorm(
   ctx.shadowColor = "rgba(0,0,0,0.85)";
   ctx.shadowBlur = 6;
   // Pinned inside the view: the label is the warning, so it cannot scroll out with the lip
-  ctx.fillText(
-    `ORAGE  ${Math.max(0, Math.round(gapM))} m`,
-    cam.viewW / 2,
-    Math.min(topY + 30, cam.viewH - 14)
-  );
+  ctx.fillText(label, cam.viewW / 2, Math.min(topY + 30, cam.viewH - 14));
   ctx.restore();
 }
 
