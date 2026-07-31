@@ -182,9 +182,10 @@ export function drawAnchor(
   used: boolean,
   highlighted: boolean,
   skip: boolean,
-  time: number
+  time: number,
+  scale = 1
 ): void {
-  const r = skip ? 13 : 10;
+  const r = (skip ? 13 : 10) * scale;
   const spin = time * 0.6 + x * 0.01;
 
   if (highlighted) {
@@ -241,15 +242,19 @@ export function drawDustMote(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  time: number
+  time: number,
+  scale = 1
 ): void {
-  const tw = 0.6 + 0.4 * Math.sin(time * 3 + x * 0.08);
+  // The twinkle used to swing between 0.2 and 1.0, so a mote spent part of every cycle
+  // at 15% alpha — invisible on a phone in daylight. It still breathes, it just never
+  // goes out: a collectible you cannot see is not a decision, it is a surprise.
+  const tw = 0.78 + 0.22 * Math.sin(time * 3 + x * 0.08);
   ctx.save();
   ctx.shadowColor = "#ffe9a8";
-  ctx.shadowBlur = 6;
-  ctx.fillStyle = `rgba(255,236,176,${0.75 * tw})`;
+  ctx.shadowBlur = 6 * scale;
+  ctx.fillStyle = `rgba(255,236,176,${0.88 * tw})`;
   ctx.beginPath();
-  ctx.arc(x, y, 2.6, 0, Math.PI * 2);
+  ctx.arc(x, y, 2.6 * scale, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -260,7 +265,8 @@ export function drawGarlandGem(
   x: number,
   y: number,
   time: number,
-  seed: number
+  seed: number,
+  scale = 1
 ): void {
   const pulse = 0.5 + 0.5 * Math.sin(time * 3.4 + seed * 0.6);
   const colour = SPECTRUM[Math.floor(seed) % SPECTRUM.length];
@@ -270,7 +276,7 @@ export function drawGarlandGem(
   ctx.strokeStyle = colour;
   ctx.lineWidth = 1.4;
   ctx.beginPath();
-  ctx.arc(x, y, 11 + pulse * 3.5, 0, Math.PI * 2);
+  ctx.arc(x, y, (11 + pulse * 3.5) * scale, 0, Math.PI * 2);
   ctx.stroke();
   ctx.globalAlpha = 1;
 
@@ -278,6 +284,7 @@ export function drawGarlandGem(
   ctx.shadowBlur = 14;
   ctx.translate(x, y);
   ctx.rotate(time * 1.1 + seed);
+  ctx.scale(scale, scale);
   ctx.beginPath();
   ctx.moveTo(0, -7);
   ctx.lineTo(5, 0);

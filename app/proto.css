@@ -104,7 +104,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* Centred by AUTO MARGINS, not by justify-content. The settings card is taller than a
+     phone screen, and a centred flex column pushes its overflow off the top where no
+     amount of scrolling reaches it — scrollTop is already 0 up there. Auto margins
+     centre exactly the same way when there is room and collapse to nothing when there
+     is not, so tall screens stay centred and short ones simply scroll. */
+  justify-content: flex-start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   gap: 1.25rem;
   padding: 2rem 1.75rem;
   background: rgba(0, 0, 0, 0.86);
@@ -714,7 +721,6 @@
     rgba(9, 7, 20, 0.3) 100%
   );
   backdrop-filter: blur(1.5px);
-  justify-content: center;
   text-shadow: 0 1px 12px rgba(9, 7, 20, 0.8);
 }
 
@@ -841,3 +847,316 @@
 .proto-armed--next {
   color: #ffe0a3;
 }
+
+/* ---- Settings ---------------------------------------------------------------
+   The preview is the actual control: numbers on a slider say nothing about
+   whether a mote will be visible on a sunlit phone, so the sky, the prisms, the
+   dust and Prism herself are drawn live at the current values, with the thumb
+   band shaded when it is on. */
+.proto-preview {
+  width: min(300px, 92%);
+  aspect-ratio: 300 / 190;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #0d0b1c;
+}
+
+.proto-settings {
+  gap: 0.7rem;
+  justify-items: stretch;
+}
+
+.proto-settings h4 {
+  margin: 0;
+  font-size: 0.6rem;
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+}
+
+.proto-slider {
+  display: grid;
+  grid-template-columns: 5.2rem 1fr 2.6rem;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.proto-slider-label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.proto-slider-value {
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* A thumb big enough to hit with an actual thumb: 44px of touch target on a
+   track that stays hairline-thin. */
+.proto-slider input[type="range"] {
+  appearance: none;
+  width: 100%;
+  height: 30px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.proto-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.proto-slider input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -9px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+}
+
+.proto-slider input[type="range"]::-moz-range-track {
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.proto-slider input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+}
+
+/* ---- Two-way choice (the camera) ---- */
+.proto-choice {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.proto-choice-btn {
+  font-family: inherit;
+  display: grid;
+  gap: 0.15rem;
+  text-align: left;
+  padding: 0.55rem 0.7rem;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.proto-choice-btn.picked {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.proto-choice-name {
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+}
+
+.proto-choice-hint {
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ---- Toggles ---- */
+.proto-toggle {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+}
+
+.proto-toggle.on {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.proto-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+/* The native checkbox stays in the tree for the keyboard and the screen reader,
+   and the pip is what is actually looked at. */
+.proto-toggle-row input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.proto-toggle-name {
+  flex: 1;
+  font-size: 0.8125rem;
+  color: #fff;
+}
+
+.proto-toggle-pip {
+  width: 34px;
+  height: 19px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  position: relative;
+  transition: background 0.15s ease;
+}
+
+.proto-toggle-pip::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.65);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.proto-toggle.on .proto-toggle-pip { background: rgba(255, 255, 255, 0.4); }
+.proto-toggle.on .proto-toggle-pip::after {
+  transform: translateX(15px);
+  background: #fff;
+}
+
+.proto-toggle-row input:focus-visible + .proto-toggle-name + .proto-toggle-pip {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.proto-toggle-hint {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.proto-toggle-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.proto-inline-btn {
+  font-family: inherit;
+  font-size: 0.625rem;
+  color: rgba(255, 255, 255, 0.45);
+  background: transparent;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.proto-inline-btn:hover { color: #fff; }
+
+.proto-settings-note {
+  width: min(320px, 92%);
+  text-align: center;
+}
+
+/* ---- The one-gesture card, shown before a first-timer's first run ---- */
+.proto-howto {
+  gap: 0.5rem;
+}
+
+.proto-howto-art {
+  width: 108px;
+  height: 108px;
+  fill: rgba(255, 255, 255, 0.9);
+}
+
+.proto-howto-keycap { fill: rgba(13, 11, 28, 0.85); }
+
+/* press — hold — lift, on a loop: the instruction performed rather than described */
+.proto-howto-thumb {
+  transform-origin: 60px 70px;
+  animation: proto-press 2.6s ease-in-out infinite;
+}
+
+@keyframes proto-press {
+  0%, 12% { transform: translateY(0) scale(1); }
+  22%, 62% { transform: translateY(7px) scale(0.96); }
+  74%, 100% { transform: translateY(0) scale(1); }
+}
+
+.proto-howto-ring {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 2;
+  opacity: 0;
+  transform-origin: 60px 52px;
+  animation: proto-ripple 2.6s ease-out infinite;
+}
+
+.proto-howto-ring--late { animation-delay: 0.22s; }
+
+@keyframes proto-ripple {
+  0%, 18% { opacity: 0; transform: scale(0.4); }
+  26% { opacity: 0.75; transform: scale(0.75); }
+  50% { opacity: 0; transform: scale(1.5); }
+  100% { opacity: 0; transform: scale(1.5); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .proto-howto-thumb, .proto-howto-ring { animation: none; }
+}
+
+.proto-howto-steps {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  list-style: none;
+  width: min(300px, 92%);
+}
+
+.proto-howto-steps li {
+  display: grid;
+  grid-template-columns: 1.5rem 1fr;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.85);
+  text-align: left;
+}
+
+.proto-howto-steps b {
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.proto-howto-note {
+  margin: 0;
+  width: min(300px, 92%);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+}
+
+.proto-howto-note--warn { color: rgba(255, 214, 214, 0.6); }
+
+/* The two halves of the auto-margin centring described on .proto-overlay. Kept as
+   separate rules so the intent survives someone reordering the flex properties. */
+.proto-overlay > :first-child { margin-top: auto; }
+.proto-overlay > :last-child { margin-bottom: auto; }

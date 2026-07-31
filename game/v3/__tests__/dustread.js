@@ -32,16 +32,45 @@ e.dusts = [
 calls.length = 0;
 e.draw();
 
-const radii = calls.filter(c => c.fn === "arc").map(c => c.args[2]);
-const lineDot = radii.some(r => Math.abs(r - 2.5) < 0.01);
-const bonusRing = radii.some(r => Math.abs(r - 6.5) < 0.01);
-const halo = radii.some(r => r > 10);
+// Sizes are a player setting now, so the assertions are about RELATIONSHIPS and about
+// APPARENT size on a real phone — not about magic radii. This second half exists
+// because of Fab's second report, from an iPhone 14 Pro: "les poussières... c'est assez
+// rikiki". He was right, and nothing here could have told him so: the old check only
+// asked whether a 2.5px radius was still exactly 2.5px.
+//
+// The canvas is VIEW_W logical pixels wide and fills the screen, so on a 393pt-wide
+// iPhone one logical pixel is 393/540 = 0.728pt. That conversion is the whole point:
+// 2.6px sounds fine and is 3.8pt across, which is smaller than the dot on an i.
+const PT_PER_PX = 393 / C.VIEW_W;
+const MIN_DIAMETER_PT = 5; // below this a lit dot stops registering in peripheral vision
+
+const halo = calls.filter(c => c.fn === "arc").some(c => c.args[2] > 10);
 // A garland: one path with several lineTo through the arc's members
 const lineTos = calls.filter(c => c.fn === "lineTo").length;
 
-console.log("Lisibilité des deux types de poussière :");
-console.log(`  point de ligne (r 2.5)      ${lineDot ? "oui" : "non"}`);
-console.log(`  anneau bonus  (r 6.5)       ${bonusRing ? "oui" : "non"}`);
+// Measured by calling the two draw functions in isolation. Reading the smallest arc in a
+// whole frame does not work — Prism's own eye is a smaller circle than any dust mote, and
+// an earlier version of this check happily reported HER as the collectible.
+const draw = require("./art/draw");
+const { DEFAULTS } = require("./settings");
+const soloRadii = (fn) => {
+  const r = recording();
+  const ctx = r.canvas.getContext();
+  fn(ctx);
+  return r.calls.filter(c => c.fn === "arc").map(c => c.args[2]);
+};
+const mote = Math.max(...soloRadii(c => draw.drawDustMote(c, 50, 50, 0, DEFAULTS.dustScale)));
+const gem = Math.max(...soloRadii(c => draw.drawGarlandGem(c, 50, 50, 0, 1, DEFAULTS.dustScale)));
+const motePt = mote * 2 * PT_PER_PX;
+
+console.log("Lisibilité des deux types de poussière (réglages par défaut) :");
+console.log(
+  `  point de ligne              r ${mote.toFixed(2)}px = ${motePt.toFixed(1)}pt de diamètre ` +
+    `sur un iPhone 14 Pro — ${motePt >= MIN_DIAMETER_PT ? "visible" : "TROP PETIT"}`
+);
+console.log(
+  `  guirlande distinguable      ${gem ? `oui (r ${gem.toFixed(1)}, x${(gem / mote).toFixed(1)})` : "NON — les deux types se ressemblent"}`
+);
 console.log(`  halo pulsant  (r > 10)      ${halo ? "oui" : "non"}`);
 console.log(`  fil de guirlande (lineTo)   ${lineTos >= 2 ? "oui (" + lineTos + " segments)" : "non"}`);
 

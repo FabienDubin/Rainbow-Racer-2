@@ -130,6 +130,51 @@ export const CAM_FOLLOW_SPEED = 7;
 // outruns it; it must stay well below, or it steals the storm's job again.
 export const DEATH_MARGIN = 640; // px below the view before the run ends
 
+// ---- The tracking camera (the "follow" mode) ----
+// Fab's report, on an iPhone: his thumb sits over Prism, so at the moment he presses he
+// cannot see what he is aiming at. The answer is a camera that tracks him sideways, so
+// Prism sits near the middle of the frame and the scenery moves instead.
+//
+// The corridor is NOT made wider to do it, and that is a measured decision rather than a
+// timid one. The first attempt widened the cylinder from 840px to 1400 so the tracking
+// had somewhere to go. It destroyed the game: expert runs fell from 172m to 27m and the
+// skill gradient collapsed from x3.2 to x0.6 — careless play beat skilled play. Tracing
+// one run showed why in one line: 19 grabs in the narrow world, 2 in the wide one. The
+// wrap is not decoration, it is a CORRAL. A launch that goes sideways gets carried out
+// one edge and delivered back in near the anchor chain; widen the loop and the same
+// launch simply sails into empty sky and never comes back.
+//
+// So the world stays exactly 840px around and the physics stay bit-identical. What
+// changes is that the 150px margins on each side, which used to be permanently
+// off-screen, are now somewhere the camera will actually take you — 840px of world seen
+// over a run instead of 540. That is the "more width at the sides", and it costs the
+// game nothing.
+export const CAM_DEADZONE_X = 80; // px of slack before the camera starts moving.
+// Not zero: locking the camera exactly on Prism makes the whole world slosh side to side
+// with every pendulum swing, which is unpleasant on a phone held close to the face.
+export const CAM_FOLLOW_SPEED_X = 6; // how fast it closes the gap, per second
+//
+// Nothing else changes. Widening the anchor chain to match the wider view was tried and
+// swept: at a 720px band the gradient read x2.6, at 540px it read x1.8 while the careless
+// bot's altitude jumped from 53m to 82m. A knob that moves the numbers that hard and that
+// far from monotonically is not a knob being tuned, it is noise being mined. So follow
+// mode generates a bit-identical world and earns its pan honestly: a player already
+// travels the whole 840px corridor (measured: px ranged from -150 to 690 across a single
+// expert run), so the camera has plenty to track without touching the game at all.
+
+// ---- The thumb band ----
+// The bottom quarter of a phone screen belongs to the thumb. The camera never rises far
+// enough to push Prism into it — measured against the physics, this changes nothing you
+// can do, only what you can see while doing it. It does retire the DEATH_MARGIN backstop
+// (Prism can no longer reach the bottom of the frame), which is fine: the storm was
+// always supposed to be the thing that ends a run, and now it is the only one.
+export const THUMB_BAND = 0.25; // fraction of the view height kept clear at the bottom
+
+// ---- The ghost ----
+// Samples of your best run, replayed translucent beside you. 8 per second is enough for
+// a smooth silhouette and keeps a three-minute run under 25KB in localStorage.
+export const GHOST_SAMPLE_INTERVAL = 0.125;
+
 // ---- World generation ----
 export const ROW_SPACING = 195; // vertical gap between anchor rows
 export const ROW_MARGIN_X = 70;

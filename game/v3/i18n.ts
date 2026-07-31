@@ -155,6 +155,46 @@ const FR = {
   "item.mode_pure.blurb":
     "3 runs : plus d'ailes du tout, poussière et distance comptées x1,5.",
 
+  // ---- Settings
+  "settings.title": "Réglages",
+  "settings.open": "Réglages",
+  "settings.sizes": "Tailles",
+  "settings.dust": "Poussières",
+  "settings.anchors": "Prismes",
+  "settings.prism": "Prism",
+  "settings.view": "Vue",
+  "settings.camera": "Caméra",
+  "settings.camera.chimney": "Cheminée",
+  "settings.camera.chimney.d":
+    "Le couloir tient dans l'écran. Tu sors d'un côté, tu reviens de l'autre.",
+  "settings.camera.follow": "Suivi",
+  "settings.camera.follow.d":
+    "La caméra te suit : Prism reste vers le milieu, c'est le décor qui bouge.",
+  "settings.thumb": "Zone pouce",
+  "settings.thumb.d":
+    "Garde Prism hors du quart bas de l'écran, là où se pose ton pouce.",
+  "settings.ghost": "Fantôme",
+  "settings.ghost.d": "Ton meilleur run rejoue à côté de toi, en transparence.",
+  "settings.ghost.best": "enregistré : {n} m",
+  "settings.ghost.none": "rien d'enregistré pour l'instant",
+  "settings.ghost.clear": "effacer",
+  "settings.preview": "Aperçu",
+  "settings.reset": "tout remettre par défaut",
+  "settings.note":
+    "Ces réglages ne changent que ce que tu vois, jamais ce que le jeu te demande. Ils restent sur cet appareil.",
+  "settings.howto": "revoir les commandes",
+
+  // ---- First run
+  "howto.title": "Un seul geste",
+  "howto.press.touch": "Appuie avec le pouce",
+  "howto.press.key": "Appuie sur Espace",
+  "howto.hold": "Maintiens : le treuil enroule et le pendule prend de la vitesse",
+  "howto.release.touch": "Lâche : tu pars le long de la tangente",
+  "howto.release.key": "Relâche : tu pars le long de la tangente",
+  "howto.aim": "Lâche quand ta vitesse pointe vers le haut. Les repères ⊥ te montrent où.",
+  "howto.storm": "Rien ne te tue sauf perdre de l'altitude. L'orage monte, toujours.",
+  "howto.go": "C'est parti",
+
   // ---- Sharing
   "share.label": "Partager",
   "share.copied": "Copié",
@@ -284,6 +324,44 @@ const EN: Record<StringKey, string> = {
   "item.mode_pure.blurb":
     "3 runs: no wings at all, dust and distance counted x1.5.",
 
+  "settings.title": "Settings",
+  "settings.open": "Settings",
+  "settings.sizes": "Sizes",
+  "settings.dust": "Dust",
+  "settings.anchors": "Prisms",
+  "settings.prism": "Prism",
+  "settings.view": "View",
+  "settings.camera": "Camera",
+  "settings.camera.chimney": "Chimney",
+  "settings.camera.chimney.d":
+    "The corridor fits the screen. You leave one side and come back the other.",
+  "settings.camera.follow": "Tracking",
+  "settings.camera.follow.d":
+    "The camera follows you: Prism stays near the middle and the scenery moves instead.",
+  "settings.thumb": "Thumb zone",
+  "settings.thumb.d":
+    "Keeps Prism out of the bottom quarter of the screen, where your thumb rests.",
+  "settings.ghost": "Ghost",
+  "settings.ghost.d": "Your best run replays beside you, see-through.",
+  "settings.ghost.best": "recorded: {n} m",
+  "settings.ghost.none": "nothing recorded yet",
+  "settings.ghost.clear": "clear",
+  "settings.preview": "Preview",
+  "settings.reset": "put everything back to default",
+  "settings.note":
+    "These change what you see, never what the game asks of you. They stay on this device.",
+  "settings.howto": "see the controls again",
+
+  "howto.title": "One gesture",
+  "howto.press.touch": "Press with your thumb",
+  "howto.press.key": "Press the space bar",
+  "howto.hold": "Hold: the winch reels in and the pendulum picks up speed",
+  "howto.release.touch": "Let go: you launch along the tangent",
+  "howto.release.key": "Release: you launch along the tangent",
+  "howto.aim": "Let go when your speed points upward. The ⊥ marks show you where.",
+  "howto.storm": "Nothing kills you but losing altitude. The storm is always rising.",
+  "howto.go": "Let's go",
+
   "share.label": "Share",
   "share.copied": "Copied",
   "share.text": "🦄 {m} m in Rainbow Racer{rank}. Think you can beat me? 🌈",
@@ -408,6 +486,44 @@ const DE: Record<StringKey, string> = {
   "item.mode_pure.name": "Reiner Flug",
   "item.mode_pure.blurb":
     "3 Läufe: gar keine Flügel, Staub und Distanz zählen x1,5.",
+
+  "settings.title": "Einstellungen",
+  "settings.open": "Einstellungen",
+  "settings.sizes": "Größen",
+  "settings.dust": "Staub",
+  "settings.anchors": "Prismen",
+  "settings.prism": "Prism",
+  "settings.view": "Ansicht",
+  "settings.camera": "Kamera",
+  "settings.camera.chimney": "Kamin",
+  "settings.camera.chimney.d":
+    "Der Korridor passt auf den Bildschirm. Du fliegst auf einer Seite hinaus und kommst auf der anderen zurück.",
+  "settings.camera.follow": "Verfolgend",
+  "settings.camera.follow.d":
+    "Die Kamera folgt dir: Prism bleibt in der Mitte, dafür bewegt sich die Landschaft.",
+  "settings.thumb": "Daumenzone",
+  "settings.thumb.d":
+    "Hält Prism aus dem unteren Viertel des Bildschirms, wo dein Daumen liegt.",
+  "settings.ghost": "Geist",
+  "settings.ghost.d": "Dein bester Lauf läuft durchscheinend neben dir mit.",
+  "settings.ghost.best": "gespeichert: {n} m",
+  "settings.ghost.none": "noch nichts gespeichert",
+  "settings.ghost.clear": "löschen",
+  "settings.preview": "Vorschau",
+  "settings.reset": "alles zurücksetzen",
+  "settings.note":
+    "Das ändert nur, was du siehst — nie, was das Spiel von dir verlangt. Es bleibt auf diesem Gerät.",
+  "settings.howto": "Steuerung nochmal ansehen",
+
+  "howto.title": "Eine einzige Geste",
+  "howto.press.touch": "Mit dem Daumen drücken",
+  "howto.press.key": "Leertaste drücken",
+  "howto.hold": "Halten: die Winde zieht ein, das Pendel nimmt Fahrt auf",
+  "howto.release.touch": "Loslassen: du startest entlang der Tangente",
+  "howto.release.key": "Loslassen: du startest entlang der Tangente",
+  "howto.aim": "Lass los, wenn deine Geschwindigkeit nach oben zeigt. Die ⊥-Marken zeigen wo.",
+  "howto.storm": "Nichts tötet dich außer Höhenverlust. Der Sturm steigt, immer.",
+  "howto.go": "Los geht's",
 
   "share.label": "Teilen",
   "share.copied": "Kopiert",

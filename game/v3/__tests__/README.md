@@ -62,7 +62,25 @@ hidden behind "it's a bit weird". Keep them running as the physics changes.
 - **dustread.js** — the two kinds of dust must be tellable apart before you reach them,
   and the value must be named on pickup. Exists because Fab reported seeing only one kind:
   a 3px dot and a 6px ring are indistinguishable in white on black, so the choice the
-  bonus arcs were meant to pose never reached him.
+  bonus arcs were meant to pose never reached him. Rewritten after his SECOND report, from
+  an iPhone — "c'est assez rikiki" — which the first version could never have caught,
+  because it only asked whether a 2.5px radius was still exactly 2.5px. It now converts to
+  POINTS on a real phone (540 logical px fill 393pt, so ×0.728) and fails below a 5pt
+  diameter. The shipped mote was 3.8pt across, smaller than the dot on an "i".
+  Sizes are a player setting now, so it asserts relationships, never magic numbers.
+  Note the trap it fell into on the way: taking the smallest circle in a whole frame
+  reports PRISM'S EYE, not the dust. It calls the two draw functions in isolation instead.
+
+- **camera.js** — the thumb band and the tracking camera both look like "just rendering",
+  and one of them was not. Runs the bots under chimney / chimney+thumb / follow+thumb, 24
+  seeds each, and compares skill gradients. It immediately caught the version of follow
+  mode that widened the corridor from 840px to 1400: expert 172m -> 27m, gradient x3.2 ->
+  x0.6, careless play beating skilled play. The wrap is a CORRAL, not decoration — a
+  sideways launch is carried out one edge and delivered back near the anchor chain, and a
+  wider loop just lets it sail into empty sky (19 grabs became 2). Follow mode now
+  generates a bit-identical world and all three configurations read the same numbers.
+  Keep it that way: if this probe ever shows a spread, the camera has started playing the
+  game for the player.
 - **reach.js** — separates "hard because it takes skill" from "hard because the geometry
   quietly excludes it". Bonus garlands sit at ROPE_MIN+55 while the winch reels you inward,
   so this traces the swing radius and reports how long you spend in the garland's band per

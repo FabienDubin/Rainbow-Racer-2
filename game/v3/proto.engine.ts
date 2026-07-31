@@ -18,6 +18,8 @@ import { audio, haptic } from "./audio";
 // The HUD is redrawn every frame, so it simply asks for the current language each
 // time — no need to rebuild the engine when the player switches.
 import { t } from "./i18n";
+import { DEFAULTS, Settings } from "./settings";
+import { GhostData, GhostRecorder, ghostAt, loadGhost } from "./ghost";
 import { skyAt, SkyState } from "./art/palette";
 import {
   Camera, drawAnchor, drawDustMote, drawGarlandGem, drawGarlandThread, drawParallax,
@@ -41,6 +43,7 @@ import {
   RAIDER_ROWS_APART, RAIDER_SPEED, RAIDER_START_M, RAIDER_STEAL,
   CHECKPOINT_FIRST_M, CHECKPOINT_GROWTH, DUST_BONUS_CHANCE, DUST_BONUS_VALUE,
   DUST_LINE_PER_ROW, DUST_MAGNET_RADIUS, DUST_RADIUS,
+  CAM_DEADZONE_X, CAM_FOLLOW_SPEED_X, THUMB_BAND,
   START_VY, STORM_LAG_START, STORM_LAG_MIN, STORM_LAG_TAU,
   STREAK_COUNT, STREAK_MAX_SPEED, STREAK_MIN_SPEED, SWING_PUMP, SWING_RECOVERY_DRIVE,
   SWING_STALL_FLOOR, RELEASE_KICK, TETHER_RANGE, VIEW_H, VIEW_W, WHIP_RECOVERY,
@@ -168,6 +171,9 @@ export class ProtoEngine {
   private rowsSinceSkip = 0;
   private rowsSinceBolt = 0;
   private camY = 0;
+  // World X sitting at the centre of the screen. Pinned to the corridor's middle in
+  // chimney mode, which makes screenX() the identity and leaves that mode untouched.
+  private camCx = VIEW_W / 2;
   private peakY = 0;
   private chain = 0;
   private bestChain = 0;
@@ -198,6 +204,11 @@ export class ProtoEngine {
   private viewH = VIEW_H;
   private sky: SkyState = skyAt(0);
 
+  // Your best run, replayed alongside. Null when there is nothing recorded yet, or when
+  // the setting is off.
+  private ghost: GhostData | null = null;
+  private ghostRec = new GhostRecorder();
+
   constructor(
     private canvas: HTMLCanvasElement,
     private onEnd: (stats: ProtoStats) => void,
@@ -205,7 +216,10 @@ export class ProtoEngine {
       extraWings: 0, extraTetherRange: 0, startBoost: false, talisman: false,
       magnet: false, stormFactor: 1, dustFactor: 1, noBolts: false, noWings: false,
       anchorScarcity: 1,
-    }
+    },
+    // Comfort settings are read once, at launch. They are changed between runs on a
+    // screen you can only reach while not playing, so there is nothing to keep in sync.
+    private opts: Settings = DEFAULTS
   ) {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D context unavailable");
@@ -225,13 +239,49 @@ export class ProtoEngine {
       this.stormY = this.py - STORM_LAG_START;
     }
     this.camY = this.py + (0.5 - CAM_PLAYER_SCREEN_FRAC) * this.viewH * -1;
+    this.camCx = this.follow ? this.px : VIEW_W / 2;
+    if (this.opts.ghost) this.ghost = loadGhost();
     this.generateUpTo(this.camY + this.viewH * 1.5);
+  }
+
+  // ------------------------------------------------------------------ the corridor
+  //
+  // One cylinder, 840px around, in BOTH modes — see the constants for the measurement
+  // that settled that. The modes differ only in where the camera looks and how far
+  // across the corridor the anchor chain is allowed to wander.
+  private get follow(): boolean {
+    return this.opts.camera === "follow";
+  }
+
+  private get worldW(): number {
+    return VIEW_W + WRAP_MARGIN * 2;
+  }
+
+  /** Left edge of the corridor in world X. */
+  private get worldMinX(): number {
+    return -WRAP_MARGIN;
+  }
+
+  /**
+   * Screen X for a world X. The identity in chimney mode, so that mode renders exactly
+   * as it always has. In follow mode the camera is clamped inside the corridor, so the
+   * seam is never on screen and no wrapped arithmetic is needed here.
+   */
+  private screenX(worldX: number): number {
+    return this.follow ? worldX - this.camLeft() : worldX;
+  }
+
+  /** World X of the left edge of the screen, clamped to the corridor. */
+  private camLeft(): number {
+    const min = this.worldMinX;
+    const max = min + this.worldW - VIEW_W;
+    return Math.max(min, Math.min(max, this.camCx - VIEW_W / 2));
   }
 
   // Prism reads at ~55px tall on a phone at this scale — big enough to be the hero of the
   // frame, small enough that the swing arc stays the thing you are reading.
   private dashScale(): number {
-    return 1.35 + this.flashAttach * 0.12;
+    return (1.35 + this.flashAttach * 0.12) * this.opts.prismScale;
   }
 
   private pose(): PrismPose {
@@ -343,6 +393,7 @@ export class ProtoEngine {
   // ---------------------------------------------------------------- update
   private update(dt: number): void {
     this.time += dt;
+    this.ghostRec.record(dt, this.px, this.py);
     this.flapTimer = Math.max(0, this.flapTimer - dt);
     this.regrabTimer = Math.max(0, this.regrabTimer - dt);
     this.grabCooldown = Math.max(0, this.grabCooldown - dt);
@@ -426,6 +477,26 @@ export class ProtoEngine {
       this.camY += (camTarget - this.camY) * Math.min(1, CAM_FOLLOW_SPEED * dt);
     }
 
+    // ---- The thumb band. A rising-only camera means a long fall slides Prism down the
+    // screen and, on a phone, straight under the thumb that is about to press. So the
+    // camera is allowed to give ground — but only as much as it takes to keep her out
+    // of the bottom quarter, and never a pixel more.
+    if (this.opts.thumbGuard) {
+      const floor = this.py + this.viewH * (0.5 - THUMB_BAND);
+      if (this.camY > floor) this.camY = floor;
+    }
+
+    // ---- Horizontal tracking, follow mode only. A deadzone rather than a hard lock:
+    // centring exactly on Prism makes the whole world slosh with every pendulum swing.
+    // This is pure presentation — camCx is read by screenX and by nothing else.
+    if (this.follow) {
+      const d = this.px - this.camCx;
+      const over = Math.abs(d) - CAM_DEADZONE_X;
+      if (over > 0) {
+        this.camCx += Math.sign(d) * over * Math.min(1, CAM_FOLLOW_SPEED_X * dt);
+      }
+    }
+
     this.generateUpTo(this.camY + this.viewH * 1.2);
     this.anchors = this.anchors.filter((a) => a.y > this.camY - this.viewH);
 
@@ -502,8 +573,8 @@ export class ProtoEngine {
     this.raiders = this.raiders.filter(
       (r) =>
         r.y > this.camY - this.viewH &&
-        r.x > -WRAP_MARGIN - 120 &&
-        r.x < VIEW_W + WRAP_MARGIN + 120
+        r.x > this.worldMinX - 120 &&
+        r.x < this.worldMinX + this.worldW + 120
     );
 
     // ---- Éclairs
@@ -540,13 +611,14 @@ export class ProtoEngine {
   // Horizontal distance the short way round the cylinder. Everything that reasons
   // about "how far across" must use this, or the seam becomes a wall again.
   private get wrapW(): number {
-    return VIEW_W + WRAP_MARGIN * 2;
+    return this.worldW;
   }
 
   private wrapX(x: number): number {
-    const w = this.wrapW;
-    if (x < -WRAP_MARGIN) return x + w;
-    if (x >= VIEW_W + WRAP_MARGIN) return x - w;
+    const w = this.worldW;
+    const min = this.worldMinX;
+    if (x < min) return x + w;
+    if (x >= min + w) return x - w;
     return x;
   }
 
@@ -832,6 +904,7 @@ export class ProtoEngine {
   // strong, near-vertical release reaches it, and taking it skips a rung. That is
   // where expert play converts timing into altitude.
   private generateUpTo(topY: number): void {
+    // Identical in both camera modes, deliberately — see the constants for the sweep.
     const clampX = (x: number) =>
       Math.max(ROW_MARGIN_X, Math.min(VIEW_W - ROW_MARGIN_X, x));
 
@@ -877,6 +950,9 @@ export class ProtoEngine {
       if (Math.random() < DUST_BONUS_CHANCE) {
         const arcId = this.nextArcId++;
         const edge = Math.random() < 0.3;
+        // Out in the wrap margin, which pays for riding the edge. Follow mode gets the
+        // same garlands in the same places — and finally lets you SEE them, since the
+        // camera goes out there with you.
         const cx = edge ? (Math.random() < 0.5 ? -70 : VIEW_W + 70) : x;
         const r = ROPE_MIN + 55;
         for (let i = 0; i < 4; i++) {
@@ -967,6 +1043,10 @@ export class ProtoEngine {
   private end(): void {
     this.over = true;
     audio.death();
+    const metres = Math.round(Math.max(0, this.peakY) / PX_PER_METER);
+    // Only a run that beat the stored one replaces it, so the ghost always represents
+    // your best and never your last
+    this.ghostRec.saveIfBest(metres);
     this.onEnd({
       altitudeM: Math.round(Math.max(0, this.peakY) / PX_PER_METER),
       bestChain: this.bestChain,
@@ -1012,24 +1092,30 @@ export class ProtoEngine {
     for (const a of this.anchors) {
       const sy = this.screenY(a.y);
       if (sy < -40 || sy > this.viewH + 40) continue;
-      drawAnchor(ctx, a.x, sy, this.sky.light, a.used, a === inRange, a.skip, this.time);
+      const sx = this.screenX(a.x);
+      if (sx < -40 || sx > VIEW_W + 40) continue;
+      drawAnchor(
+        ctx, sx, sy, this.sky.light, a.used, a === inRange, a.skip, this.time,
+        this.opts.anchorScale
+      );
     }
 
     // Rope + swing circle. The rope is the game's name made literal: a rainbow ribbon.
     if (this.anchor) {
       const ay = this.screenY(this.anchor.y);
+      const ax = this.screenX(this.anchor.x);
       ctx.save();
       ctx.strokeStyle = "rgba(255,255,255,0.16)";
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 7]);
       ctx.beginPath();
-      ctx.arc(this.anchor.x, ay, this.ropeLen, 0, Math.PI * 2);
+      ctx.arc(ax, ay, this.ropeLen, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
 
       // The release window: where your velocity points straight up
       for (const side of [-1, 1]) {
-        const mx = this.anchor.x + side * this.ropeLen;
+        const mx = ax + side * this.ropeLen;
         ctx.strokeStyle = "rgba(255,255,255,0.7)";
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -1045,19 +1131,23 @@ export class ProtoEngine {
       const grip = prismGrip(this.pose());
       drawTether(
         ctx,
-        this.anchor.x,
+        ax,
         ay,
-        this.px + grip.dx,
+        this.screenX(this.px) + grip.dx,
         this.screenY(this.py) + grip.dy,
         this.sky.light,
         this.time
       );
     }
 
+    // Your best run, running alongside. Drawn UNDER Prism and washed out, so it is a
+    // pacer you glance at rather than a second thing to track.
+    this.drawGhost(ctx);
+
     // Prism herself — the V1 sprite. Not mirrored across the seam: vanishing off one
     // side and reappearing on the other is deliberate.
     const psy = this.screenY(this.py);
-    drawPrism(ctx, this.px, psy, this.pose());
+    drawPrism(ctx, this.screenX(this.px), psy, this.pose());
 
     this.drawOffscreenMarker(ctx);
     ctx.restore();
@@ -1074,10 +1164,11 @@ export class ProtoEngine {
   // Dust: a plain dot on the line, a ring for the valuable arcs so the two read apart
   // at a glance and you can decide whether the detour is worth it.
   private drawDust(ctx: CanvasRenderingContext2D): void {
+    const scale = this.opts.dustScale;
     const arcs = new Map<number, { x: number; y: number }[]>();
     for (const d of this.dusts) {
       if (d.arc === 0) continue;
-      const pt = { x: d.x, y: this.screenY(d.y) };
+      const pt = { x: this.screenX(d.x), y: this.screenY(d.y) };
       const list = arcs.get(d.arc);
       if (list) list.push(pt);
       else arcs.set(d.arc, [pt]);
@@ -1087,8 +1178,10 @@ export class ProtoEngine {
     for (const d of this.dusts) {
       const sy = this.screenY(d.y);
       if (sy < -24 || sy > this.viewH + 24) continue;
-      if (d.value > 1) drawGarlandGem(ctx, d.x, sy, this.time, d.arc);
-      else drawDustMote(ctx, d.x, sy, this.time);
+      const sx = this.screenX(d.x);
+      if (sx < -30 || sx > VIEW_W + 30) continue;
+      if (d.value > 1) drawGarlandGem(ctx, sx, sy, this.time, d.arc, scale);
+      else drawDustMote(ctx, sx, sy, this.time, scale);
     }
 
     ctx.textAlign = "center";
@@ -1096,10 +1189,43 @@ export class ProtoEngine {
       ctx.globalAlpha = Math.min(1, p.life * 2.2);
       ctx.fillStyle = p.big ? "#fff3c4" : "#ffffff";
       ctx.font = `${p.big ? "bold 17px" : "12px"} ui-monospace, monospace`;
-      ctx.fillText(p.text, p.x, this.screenY(p.y));
+      ctx.fillText(p.text, this.screenX(p.x), this.screenY(p.y));
     }
     ctx.globalAlpha = 1;
     ctx.textAlign = "left";
+  }
+
+  // The ghost of your best run. Half-transparent and slightly shrunk so it never gets
+  // mistaken for the Prism you are actually flying.
+  private drawGhost(ctx: CanvasRenderingContext2D): void {
+    if (!this.ghost) return;
+    const at = ghostAt(this.ghost, this.time);
+    if (!at) return;
+    const sy = this.screenY(at.y);
+    if (sy < -60 || sy > this.viewH + 60) return;
+
+    // Fade out as it closes on you. Two Prisms overlapping at the same pixel reads as a
+    // rendering fault rather than a photo finish, and every run starts exactly there.
+    const near = Math.hypot(at.x - this.px, at.y - this.py);
+    const alpha = 0.32 * Math.min(1, Math.max(0, (near - 30) / 60));
+    if (alpha <= 0.02) return;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    drawPrism(ctx, this.screenX(at.x), sy, {
+      ...this.pose(),
+      tethered: false,
+      hangAngle: null,
+      tumbling: 0,
+      justAttached: 0,
+      justReleased: 0,
+      scale: this.dashScale() * 0.92,
+      // Nothing is known about how the ghost was moving, only where it was. A neutral
+      // glide pose is honest about that; faking velocity would animate a lie.
+      vx: 0,
+      vy: 0,
+    });
+    ctx.restore();
   }
 
   // The next palier, drawn as a line you can aim at. Seeing the reward coming is what
@@ -1132,7 +1258,7 @@ export class ProtoEngine {
       const sy = this.screenY(b.y);
       if (sy < -70 || sy > this.viewH + 70) continue;
       const charge = b.state === "telegraph" ? Math.min(1, b.timer / BOLT_TELEGRAPH) : 0;
-      drawThundercloud(ctx, b.x, sy, b.state, charge, VIEW_W, this.time);
+      drawThundercloud(ctx, this.screenX(b.x), sy, b.state, charge, VIEW_W, this.time);
     }
   }
 
@@ -1140,7 +1266,7 @@ export class ProtoEngine {
     for (const g of this.gusts) {
       const sy = this.screenY(g.y);
       if (sy < -g.h || sy > this.viewH + g.h) continue;
-      drawGust(ctx, g.x, sy, g.w, g.h, g.dir, this.time);
+      drawGust(ctx, this.screenX(g.x), sy, g.w, g.h, g.dir, this.time);
     }
   }
 
@@ -1148,7 +1274,10 @@ export class ProtoEngine {
     for (const r of this.raiders) {
       const sy = this.screenY(r.y);
       if (sy < -40 || sy > this.viewH + 40) continue;
-      drawRaider(ctx, r.x, sy, r.awake, r.fleeing !== 0, r.flap, r.fleeing || this.px - r.x);
+      drawRaider(
+        ctx, this.screenX(r.x), sy, r.awake, r.fleeing !== 0, r.flap,
+        r.fleeing || this.px - r.x
+      );
     }
   }
 
@@ -1158,11 +1287,14 @@ export class ProtoEngine {
   // the way you are actually travelling, so you always know where you are and where you
   // are heading. It fades as you get further out, then you reappear on the far side.
   private drawOffscreenMarker(ctx: CanvasRenderingContext2D): void {
-    const onScreen = this.px >= 0 && this.px < VIEW_W;
+    // Screen space, not world space: in follow mode the camera goes with you, so you
+    // are never off-screen and this correctly never draws.
+    const sx = this.screenX(this.px);
+    const onScreen = sx >= 0 && sx < VIEW_W;
     if (onScreen) return;
 
-    const offLeft = this.px < 0;
-    const dist = offLeft ? -this.px : this.px - VIEW_W;
+    const offLeft = sx < 0;
+    const dist = offLeft ? -sx : sx - VIEW_W;
     const fade = 1 - Math.min(1, dist / (WRAP_MARGIN * 1.15));
     const edgeX = offLeft ? 20 : VIEW_W - 20;
     const y = Math.max(30, Math.min(this.viewH - 30, this.screenY(this.py)));
@@ -1219,7 +1351,7 @@ export class ProtoEngine {
       const ox = Math.cos(seed) * spread;
       const oy = Math.sin(seed * 1.7) * spread * 1.6 + ((this.time * 400 * (0.6 + (i % 4) * 0.2)) % 900) - 450;
       const len = 26 + t * 90 * (0.5 + (i % 3) * 0.35);
-      const x = this.px + ox;
+      const x = this.screenX(this.px) + ox;
       const y = psy + oy;
       ctx.globalAlpha = t * 0.32;
       ctx.beginPath();

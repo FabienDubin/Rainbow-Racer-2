@@ -75,6 +75,38 @@ Entièrement synthétisé en Web Audio, aucun fichier. La partition est **en cou
 couches arrivent avec ta chaîne** : nappe seule quand tu galères, puis basse, arpège,
 batterie, et un lead quand tu enchaînes bien. Ta performance devient audible.
 
+## Le confort, et les deux caméras
+
+Un écran de **réglages** (depuis le menu ou depuis le résumé de fin de run) avec, au-dessus
+des curseurs, un aperçu vivant : le vrai ciel, les vrais prismes, la vraie poussière et la
+vraie Prism aux valeurs courantes. Un nombre sur un curseur ne dit rien sur ce qu'on verra
+d'un téléphone en plein soleil ; l'aperçu, si.
+
+- **Tailles** — poussières, prismes, Prism. La poussière est passée à ×1,5 par défaut :
+  mesurée, elle faisait 3,8 pt de diamètre sur un iPhone 14 Pro, soit moins que le point
+  d'un « i ». `dustread.js` mesure maintenant cette taille **en points**, pas en pixels
+  logiques, parce que c'est la seule unité dans laquelle la plainte existait.
+- **Caméra** — *Cheminée* (l'originale) ou *Suivi*, où la caméra te suit latéralement :
+  Prism reste vers le milieu et c'est le décor qui bouge. Les marges de 150 px de chaque
+  côté, jusque-là toujours hors champ, deviennent des endroits où la caméra t'emmène.
+- **Zone pouce** — la caméra ne laisse jamais Prism descendre dans le quart bas de
+  l'écran, là où se pose le pouce. Elle peut donc redescendre un peu, ce qu'elle ne
+  faisait jamais avant, et le garde-fou `DEATH_MARGIN` (exprimé en espace écran) ne sert
+  plus : l'orage est désormais la seule chose qui termine un run, ce qui était l'intention.
+- **Fantôme** — ton meilleur run rejoué en transparence à côté de toi.
+
+Les deux caméras et la zone pouce ne changent **rien** au jeu, et c'est mesuré :
+`camera.js` fait tourner les trois configurations sur 24 graines et sort des chiffres
+identiques au pixel (expert 172 m, gradient x3,2). Ce n'était pas gratuit — voir plus bas.
+
+## Le premier run
+
+Un nouveau joueur (aucun run sur cet appareil) reçoit une carte avant que le monde
+n'apparaisse : appuie, maintiens, lâche. Elle nomme le bon geste selon l'appareil — un
+pouce animé sur téléphone, une barre d'espace ailleurs — parce que dire « appuie sur
+Espace » à quelqu'un qui tient un téléphone est le meilleur moyen de se faire fermer. On
+peut la revoir depuis les réglages.
+
 ## Les langues
 
 Français, anglais, allemand. Le sélecteur est en haut à gauche, en pendant du bouton de
@@ -140,6 +172,8 @@ game/v3/
   proto.constants.ts  chaque valeur de réglage, en un seul fichier
   meta.ts             poussière, boutique, loterie, score
   i18n.ts             tous les textes, en fr / en / de
+  settings.ts         tailles, caméra, zone pouce, fantôme (localStorage)
+  ghost.ts            enregistrement et relecture du meilleur run
   audio.ts            musique en couches + SFX + haptique, synthétisés
   art/palette.ts      les sept paliers d'altitude
   art/draw.ts         tout le rendu, en fonctions pures
@@ -161,6 +195,15 @@ récompense le skill**. Elles ont attrapé, entre autres, un spam d'entrée qui 
 habile, un pendule sans lancer, une punition d'éclair annulée une ligne plus loin, une
 vitesse qui composait à l'infini, une loterie qui distribuait dans l'ordre croissant, et un
 danger qui augmentait mesurablement le score du joueur négligent.
+
+La dernière en date, `camera.js`, a évité une bêtise coûteuse. Le mode Suivi devait
+s'accompagner d'un couloir élargi de 540 à 1400 px — ça a détruit le jeu : l'expert est
+tombé de 172 m à 27 m et le gradient de skill de x3,2 à x0,6, le joueur négligent passant
+devant le joueur habile. Une trace d'un seul run a donné la raison en une ligne : 19
+accroches dans le couloir étroit, 2 dans le large. **Le passage par les bords n'est pas un
+effet de style, c'est un enclos** — un lancer parti de travers est ramené près de la
+chaîne d'ancres ; élargis la boucle et le même lancer part dans le vide sans jamais
+revenir. Le monde est donc resté à 840 px et la caméra bouge, rien d'autre.
 
 Voir [`game/v3/__tests__/README.md`](game/v3/__tests__/README.md).
 

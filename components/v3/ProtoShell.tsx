@@ -14,8 +14,12 @@ import { skyAt } from "@/game/v3/art/palette";
 import { drawAnchor, drawDustMote, drawParallax, drawSky } from "@/game/v3/art/draw";
 import ShopIcon from "./ShopIcon";
 import LangSwitch from "./LangSwitch";
+import SettingsScreen from "./SettingsScreen";
+import HowtoScreen from "./HowtoScreen";
 import { useLocale } from "./useLocale";
+import { useSettings } from "./useSettings";
 import { formatNumber, t } from "@/game/v3/i18n";
+import { loadSettings } from "@/game/v3/settings";
 import { audio } from "@/game/v3/audio";
 import {
   fetchLeaderboard,
@@ -43,7 +47,15 @@ import {
 
 // The lottery gets a screen of its own. Cards, score, board and actions on one page made
 // the gamble just another widget in a stack; separated, picking a card is a moment.
-type Screen = "menu" | "playing" | "lottery" | "summary" | "shop" | "board";
+type Screen =
+  | "menu"
+  | "playing"
+  | "lottery"
+  | "summary"
+  | "shop"
+  | "board"
+  | "settings"
+  | "howto";
 
 export default function ProtoShell() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -62,9 +74,13 @@ export default function ProtoShell() {
   const [boons, setBoons] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
-  // Re-renders this whole shell when the language changes, which is what makes every
-  // t() call below current
+  // Where to go back to when the controls card is opened from somewhere other than the
+  // start of a run. Null means "this is the pre-run card, start the run on dismiss".
+  const [howtoReturn, setHowtoReturn] = useState<Screen | null>(null);
+  // Re-renders this whole shell when the language or the settings change, which is what
+  // makes every t() call below current and the settings screen live
   useLocale();
+  useSettings();
   useEffect(() => {
     audio.init();
     setMuted(audio.muted);
@@ -188,10 +204,24 @@ export default function ProtoShell() {
     persist(startRun(armed));
     setStats(null);
     setScreen("playing");
-    const engine = new ProtoEngine(canvas, handleEnd, cfg);
+    // Read straight from storage rather than from the subscribed value: play() is a
+    // callback that can be a render behind, and a run must never start on stale sizes.
+    const engine = new ProtoEngine(canvas, handleEnd, cfg, loadSettings());
     engineRef.current = engine;
     engine.start();
   }, [handleEnd, persist]);
+
+  // A brand-new player gets the one-gesture card before their first world appears. The
+  // game is a single verb and it punishes tapping harder than anything else, so nobody
+  // should have to discover "hold, then let go" by losing with it.
+  const requestPlay = useCallback(() => {
+    if (loadMeta().runs === 0) {
+      setHowtoReturn(null);
+      setScreen("howto");
+      return;
+    }
+    play();
+  }, [play]);
 
   const pickCard = (i: number) => {
     if (picked !== null) return;
@@ -213,11 +243,13 @@ export default function ProtoShell() {
       e.preventDefault();
       if (screen === "lottery") return; // the card pick is the only way past it
       if (screen === "board") return;
-      play();
+      // These two have their own buttons and their own Enter meaning
+      if (screen === "settings" || screen === "howto") return;
+      requestPlay();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [screen, picked, play]);
+  }, [screen, picked, requestPlay]);
 
   // Translated at render, not memoised on the ids: switching language must relabel them
   const armedNames = meta.consumables.map(itemName);
@@ -346,7 +378,7 @@ export default function ProtoShell() {
                   {...sfx}
                   onClick={() => {
                     persist({ ...loadMeta(), name: nameDraft.trim() });
-                    play();
+                    requestPlay();
                   }}
                 >
                   {t("menu.play")}
@@ -385,6 +417,13 @@ export default function ProtoShell() {
                       {t("menu.board")}
                     </button>
                   )}
+                  <button
+                    className="proto-btn-ghost"
+                    onClick={() => setScreen("settings")}
+                    {...sfx}
+                  >
+                    {t("settings.open")}
+                  </button>
                 </div>
 
                 {board.length > 0 && (
@@ -545,7 +584,7 @@ export default function ProtoShell() {
                 </section>
 
                 <section className="proto-sec proto-actions">
-                  <button className="proto-btn" onClick={play} {...sfx}>
+                  <button className="proto-btn" onClick={requestPlay} {...sfx}>
                     {t("summary.replay")}
                   </button>
                   {/* The armed list used to live on the menu only — a screen you never
@@ -594,6 +633,15 @@ export default function ProtoShell() {
                       {copied ? t("share.copied") : t("share.label")}
                     </button>
                   </div>
+                  {/* The end of a run is where you actually feel that something was too
+                      small to see, so the knobs are one tap away from here too. */}
+                  <button
+                    className="proto-reset"
+                    onClick={() => setScreen("settings")}
+                    {...sfx}
+                  >
+                    {t("settings.open")}
+                  </button>
                 </section>
               </>
             )}
@@ -628,6 +676,29 @@ export default function ProtoShell() {
                 </button>
               </>
             )}
+            {screen === "settings" && (
+              <SettingsScreen
+                onBack={() => setScreen(stats ? "summary" : "menu")}
+                onHowto={() => {
+                  setHowtoReturn("settings");
+                  setScreen("howto");
+                }}
+              />
+            )}
+
+            {screen === "howto" && (
+              <HowtoScreen
+                onStart={() => {
+                  if (howtoReturn) {
+                    setScreen(howtoReturn);
+                    setHowtoReturn(null);
+                  } else {
+                    play();
+                  }
+                }}
+              />
+            )}
+
             {screen === "shop" && (
               <>
                 <p className="proto-lottery-title">{t("shop.title")}</p>
@@ -674,7 +745,7 @@ export default function ProtoShell() {
                     </div>
                   ))}
                 </div>
-                <button className="proto-btn" onClick={play} {...sfx}>
+                <button className="proto-btn" onClick={requestPlay} {...sfx}>
                   {t("menu.play")}
                 </button>
                 <button
